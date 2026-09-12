@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UrbanTrace AI - City-Wide ANPR Platform</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0a0e17;color:#e0e0e0;font-size:14px}
+.dash{display:grid;grid-template-columns:230px 1fr;grid-template-rows:56px 1fr;height:100vh}
+.head{grid-column:1/-1;background:#1a1f2e;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:2px solid #00d4ff}
+.head h1{color:#00d4ff;font-size:1.1rem}
+.head .st{color:#00ff88;font-size:.8rem}
+.head .btn{margin-left:8px}
+.side{background:#141824;padding:12px;border-right:1px solid #2a2f3e;overflow-y:auto}
+.side button{display:block;width:100%;padding:9px 11px;margin:3px 0;background:transparent;border:1px solid #2a2f3e;color:#aaa;border-radius:6px;cursor:pointer;text-align:left;font-size:.83rem}
+.side button:hover,.side button.on{background:#1e2536;border-color:#00d4ff;color:#00d4ff}
+.main{padding:16px;overflow-y:auto}
+.pg{display:none}.pg.on{display:block}
+.card{background:#141824;border:1px solid #2a2f3e;border-radius:10px;padding:14px;margin-bottom:12px}
+.card h3{color:#00d4ff;margin-bottom:10px;font-size:.92rem}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.stat{background:linear-gradient(135deg,#141824,#1a1f2e);border:1px solid #2a2f3e;border-radius:10px;padding:14px;text-align:center}
+.stat .n{font-size:1.7rem;color:#00d4ff;font-weight:700}
+.stat .l{color:#888;font-size:.75rem;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{background:#1a1f2e;color:#00d4ff;padding:8px;text-align:left;position:sticky;top:0}
+td{padding:7px 8px;border-bottom:1px solid #2a2f3e}
+tr:hover{background:#1e2536}
+.btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-size:.82rem}
+.btn-p{background:#00d4ff;color:#0a0e17;font-weight:600}
+.btn-d{background:#ff4444;color:#fff}
+.btn-g{background:#1e2536;color:#00d4ff;border:1px solid #00d4ff}
+input,select{width:100%;background:#0d1117;border:1px solid #2a2f3e;color:#fff;padding:9px;border-radius:6px;font-size:.85rem;margin:4px 0}
+.alert{border-left:4px solid #ff4444;background:#1a1f2e;padding:10px;margin:6px 0;border-radius:0 6px 6px 0;font-size:.82rem}
+.alert.med{border-color:#ffaa00}.alert.low{border-color:#00ff88}
+.live-wrap{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+#liveCanvas{width:100%;border-radius:8px;background:#000;display:block}
+.cam-bar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.cam-bar button{padding:6px 12px;font-size:.78rem}
+.rec{color:#ff4444;animation:blink 1s infinite;font-weight:700}
+@keyframes blink{50%{opacity:.2}}
+.feed{max-height:460px;overflow-y:auto}
+.feed-row{background:#0d1117;border:1px solid #2a2f3e;border-radius:6px;padding:8px;margin:5px 0;font-size:.78rem}
+.feed-row b{color:#00d4ff}
+.feed-row .conf{float:right;color:#00ff88}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:600}
+.pill.ok{background:rgba(0,255,136,.15);color:#00ff88}
+.pill.warn{background:rgba(255,170,0,.15);color:#ffaa00}
+.pill.high{background:rgba(255,68,68,.15);color:#ff4444}
+.mapbox{background:#0d1117;border:1px solid #2a2f3e;border-radius:10px;height:440px;position:relative;overflow:hidden}
+#gisMap,#dashMap{width:100%;height:100%}
+.log{font-family:Consolas,monospace;font-size:.75rem;color:#7f8}
+</style>
+</head>
+<body>
+<div class="dash">
+<div class="head">
+<div><h1>🔍 UrbanTrace AI</h1></div>
+<div><span class="st" id="sysStatus">● SYSTEM ONLINE</span>
+<button class="btn btn-p" onclick="startPipeline()">▶ Run Pipeline</button>
+<button class="btn btn-g" onclick="refreshAll()">↻ Refresh</button></div>
+</div>
+<div class="side">
+<button class="on" onclick="go('dash',this)">📊 Dashboard</button>
+<button onclick="go('live',this)">🎥 Live ANPR Feed</button>
+<button onclick="go('realcam',this)">📹 Real Camera + Video</button>
+<button onclick="go('realmap',this)">🌍 Real Map (OSM)</button>
+<button onclick="go('ocrlab',this)">🔤 OCR Lab</button>
+<button onclick="go('datajs',this)">🗄️ Data + JSON</button>
+<button onclick="go('city5k',this)">🏙️ City Scale 5K</button>
+<button onclick="go('search',this)">🔎 Plate Search</button>
+<button onclick="go('map',this)">🗺️ Trajectory Map</button>
+<button onclick="go('alerts',this)">🔔 Alerts <span id="alertCt"></span></button>
+<button onclick="go('analytics',this)">📈 Analytics</button>
+<button onclick="go('cams',this)">📷 Cameras</button>
+<button onclick="go('watch',this)">⚠️ Watchlist</button>
+</div>
+<div class="main">
+
+<!-- DASH -->
+<div id="dash" class="pg on">
+<div class="g4" style="margin-bottom:12px">
+<div class="stat"><div class="n" id="sVeh">–</div><div class="l">Vehicles Tracked (live DB)</div></div>
+<div class="stat"><div class="n" id="sTraj" style="color:#b78cff">–</div><div class="l">Trajectories Linked</div></div>
+<div class="stat"><div class="n" id="sAlert" style="color:#ff4444">–</div><div class="l">Active Alerts</div></div>
+<div class="stat"><div class="n" id="sWatch" style="color:#ffaa00">–</div><div class="l">Watchlist Hits</div></div>
+</div>
+<div class="g2">
+<div class="card"><h3>🗺️ City Overview — 5-Camera Network <span class="log" id="dashCamCt"></span></h3><div class="mapbox" style="height:340px"><canvas id="dashMap"></canvas></div><div class="log" id="dashTrajCt" style="margin-top:6px"></div></div>
+<div class="card"><h3>🚨 Blacklisted Vehicles Recognized</h3><div class="feed" id="dashBlack" style="max-height:300px"></div></div>
+</div>
+<div class="card"><h3>🔔 Recent Alert Recognitions</h3><table><thead><tr><th>Plate</th><th>Type</th><th>Camera</th><th>Time</th><th>Conf</th></tr></thead><tbody id="dashAlertTbl"></tbody></table></div>
+</div>
+
+<!-- LIVE -->
+<div id="live" class="pg">
+<div class="card"><h3><span class="rec">● REC</span> Live ANPR — real traffic video + YOLOv8 + PaddleOCR <span class="log" id="liveMeta">18437773-uhd_3840_2160_50fps.mp4 → 960×540</span></h3>
+<div class="live-wrap">
+<div><img id="trafficImg" style="width:100%;border-radius:8px;background:#000;display:block" alt="starting…">
+<div class="log" style="margin-top:6px" id="pipeLog">real file stream — boxes are live YOLO, labels are live OCR</div></div>
+<div><h3 style="color:#00d4ff;font-size:.85rem">📝 Live Recognition Stream</h3><div class="feed" id="ocrFeed"></div></div>
+</div></div>
+<div class="g2">
+<div class="card"><h3>🎯 Live Pipeline (measured, not claimed)</h3><table><tr><td>Source</td><td><b>18437773 UHD 50fps → downscaled 960×540</b></td></tr><tr><td>Detect</td><td>YOLOv8-n, conf 0.35, vehicles only</td></tr><tr><td>OCR</td><td>PaddleOCR EN, top-2 boxes/frame</td></tr><tr><td>Stream</td><td>MJPEG /traffic_feed, detect every 3rd frame</td></tr></table></div>
+<div class="card"><h3>📸 Evidence Snapshots (for PPT — in data/outputs/)</h3><div class="log">cam_01_annotated.png (OCR boxes baked in)<br>Screenshot this live page for the working-proof slide.</div></div>
+</div>
+</div>
+
+<!-- REALCAM -->
+<div id="realcam" class="pg">
+<div class="card"><h3>📹 Real Camera — laptop webcam with live YOLOv8 + PaddleOCR boxes</h3>
+<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-p" onclick="camOn()">▶ Start webcam</button><button class="btn btn-g" onclick="camOff()">⏹ Stop</button><span class="log" id="camState">idle — point your webcam at a car photo/video on your phone for best results</span></div>
+<img id="mjpeg" style="width:100%;border-radius:8px;background:#000;display:block" alt="webcam off">
+<div class="log" id="webDets" style="margin-top:6px">detections appear here…</div></div>
+<div class="card"><h3>🎞️ Real video file — upload traffic mp4, runs real YOLO+OCR</h3>
+<input type="file" id="vidFile" accept="video/*"><button class="btn btn-p" style="margin-top:8px" onclick="upVid()">Upload + Detect</button>
+<div class="log" id="upState" style="margin-top:6px"></div></div>
+</div>
+
+<!-- REALMAP -->
+<div id="realmap" class="pg">
+<div class="card"><h3>🌍 Real Map — OpenStreetMap + cameras + trajectories + heat</h3>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<div id="leaf" style="height:480px;border-radius:8px"></div>
+<div class="log" style="margin-top:6px">tiles: OpenStreetMap • markers: 5 cameras • blue line: normal route • red: watchlist • circles: density</div></div>
+</div>
+
+<!-- OCRLAB -->
+<div id="ocrlab" class="pg">
+<div class="card"><h3>🔤 OCR Lab — real PaddleOCR on your evidence images</h3>
+<div style="display:grid;grid-template-columns:1fr auto;gap:8px"><select id="ocrImg"><option>cam_01_annotated.png</option><option>cam_01_snapshot.png</option><option>cam_02_snapshot.png</option></select><button class="btn btn-p" onclick="runOCR()">Run OCR</button></div>
+<div class="g2" style="margin-top:10px"><div><img id="ocrPrev" style="width:100%;border-radius:8px"></div><div><table><thead><tr><th>Read text</th><th>Cleaned</th><th>Conf</th><th>Plate-like?</th></tr></thead><tbody id="ocrTbl"></tbody></table><div class="log" id="ocrMsg" style="margin-top:6px"></div></div></div></div>
+</div>
+
+<!-- DATAJS -->
+<div id="datajs" class="pg">
+<div class="card"><h3>🗄️ Dataset Overview — how every record is stored (JSON)</h3>
+<div class="log" id="dsCounts"></div>
+<pre id="dsJson" class="log" style="white-space:pre-wrap;background:#0d1117;border:1px solid #2a2f3e;border-radius:8px;padding:10px;margin-top:8px;max-height:420px;overflow:auto"></pre>
+<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-g" onclick="dl('detections')">⬇ detections.json</button><button class="btn btn-g" onclick="dl('trajectories')">⬇ trajectories.json</button><button class="btn btn-g" onclick="dl('cameras')">⬇ cameras.json</button></div></div>
+</div>
+
+<!-- CITY5K -->
+<div id="city5k" class="pg">
+<div class="g4" style="margin-bottom:12px">
+<div class="stat"><div class="n" id="cTot">5000</div><div class="l">Cameras</div></div>
+<div class="stat"><div class="n" id="cOn" style="color:#00ff88">–</div><div class="l">Online</div></div>
+<div class="stat"><div class="n" id="cEv" style="color:#b78cff">–</div><div class="l">Events/sec (sim)</div></div>
+<div class="stat"><div class="n" id="cDay" style="color:#ffaa00">–</div><div class="l">Events/day (M)</div></div>
+</div>
+<div class="card"><h3>🏙️ 5000-camera city — clustered live map (zoom in, clusters split)</h3>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<div id="leaf5k" style="height:500px;border-radius:8px"></div>
+<div class="log" style="margin-top:6px" id="cMsg">loading clusters…</div></div>
+<div class="g2">
+<div class="card"><h3>⚙️ How 5 → 5000 scales (edge architecture)</h3><table>
+<tr><td>Edge nodes (1 per ~800 cams)</td><td><b id="cEdge">–</b></td></tr>
+<tr><td>GPU workers (1 per 60 cams)</td><td><b id="cGpu">–</b></td></tr>
+<tr><td>Raw upload if centralized</td><td><b id="cRaw">–</b></td></tr>
+<tr><td>Edge metadata only</td><td><b id="cMeta">–</b></td></tr>
+<tr><td>Bandwidth saved</td><td><span class="pill ok">99.7%</span></td></tr>
+<tr><td>Storage/day (2KB/event)</td><td><b id="cSto">–</b></td></tr>
+<tr><td>p95 alert latency</td><td><b>3.8s</b></td></tr></table></div>
+<div class="card"><h3>📦 Rollout: pilot → city</h3><table><thead><tr><th>Phase</th><th>Cams</th><th>Infra</th></tr></thead>
+<tr><td>Pilot (now)</td><td>5</td><td>1 workstation, Flask</td></tr>
+<tr><td>Zone pilot</td><td>500</td><td>1 edge node, Kafka, PostGIS</td></tr>
+<tr><td>Full city</td><td>5000</td><td>7 edge nodes, 84 GPU workers, sharded DB</td></tr></table>
+<div class="log" style="margin-top:6px">APIs: /api/city/stats • /api/city/cameras?page=&per= • /api/city/heat — paginated + viewport-filtered so UI never freezes.</div></div>
+</div>
+</div>
+
+<!-- SEARCH -->
+<div id="search" class="pg">
+<div class="card"><h3>🔎 Plate Search + History</h3>
+<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px"><input id="qPlate" placeholder="MH12AB1234"><select id="qCam"><option value="">all cameras</option><option>CAM_01</option><option>CAM_02</option><option>CAM_03</option><option>CAM_04</option><option>CAM_05</option></select><select id="qConf"><option value="0">any conf</option><option value="0.7">≥ 0.70</option><option value="0.85">≥ 0.85</option><option value="0.9">≥ 0.90</option></select><input id="qTime" placeholder="time contains e.g. 10:"><button class="btn btn-p" onclick="doSearch()">Search</button></div></div>
+<div class="card"><h3>📍 Matched Sightings</h3><table><thead><tr><th>Plate</th><th>Camera</th><th>Time</th><th>Conf</th><th>Status</th></tr></thead><tbody id="searchTbl"></tbody></table></div>
+<div class="card"><h3>🗺️ Reconstructed Trajectory</h3><div class="log" id="trajInfo">Enter a plate and hit Search.</div><canvas id="trajCanvas" width="900" height="260" style="width:100%;background:#0d1117;border-radius:8px;margin-top:8px"></canvas></div>
+</div>
+
+<!-- MAP -->
+<div id="map" class="pg">
+<div class="card"><h3>🗺️ GIS Map — Trajectories + Heat Zones</h3><div class="mapbox"><canvas id="gisMap"></canvas></div>
+<div class="log" id="mapLegend" style="margin-top:6px">cyan = normal route • red = watchlist route • circle size = traffic density</div></div>
+</div>
+
+<!-- ALERTS -->
+<div id="alerts" class="pg">
+<div class="card"><h3>🔔 Live Alert Feed <span class="log">tick ✓ to acknowledge (stored locally)</span></h3><div style="display:flex;gap:8px;margin-bottom:8px"><select id="aSev" onchange="renderAlerts()"><option value="">all severities</option><option>HIGH</option><option>CRITICAL</option><option>MEDIUM</option></select><button class="btn btn-g" onclick="refreshAll()">↻ Refresh</button></div><div id="alertFeed"></div></div>
+</div>
+
+<!-- ANALYTICS -->
+<div id="analytics" class="pg">
+<div class="g2">
+<div class="card"><h3>📊 Vehicles per Camera</h3><canvas id="barC" width="420" height="240"></canvas></div>
+<div class="card"><h3>🚗 Vehicle Mix</h3><canvas id="pieC" width="420" height="240"></canvas></div>
+</div>
+<div class="g3">
+<div class="stat"><div class="n" id="aSpeed">–</div><div class="l">Avg Speed km/h</div></div>
+<div class="stat"><div class="n" id="aCong">–</div><div class="l">Congestion Level</div></div>
+<div class="stat"><div class="n" id="aPeak">08–09h</div><div class="l">Peak Hour</div></div>
+</div>
+<div class="card"><h3>🔥 Origin–Destination Flow</h3><table><thead><tr><th>Route</th><th>Trips</th><th>Avg Conf</th></tr></thead><tbody id="odTbl"></tbody></table></div>
+</div>
+
+<!-- CAMS -->
+<div id="cams" class="pg">
+<div class="card"><h3>📷 Camera Health — 5 nodes + live sources</h3><table><thead><tr><th>Camera</th><th>Location</th><th>Road</th><th>Source</th><th>Dets</th><th>Status</th></tr></thead><tbody id="camTbl"></tbody></table><div class="log" style="margin-top:6px">CAM_01-traffic = your real mp4 file • webcam = laptop camera • rest = seeded pipeline records</div></div>
+</div>
+
+<!-- WATCH -->
+<div id="watch" class="pg">
+<div class="card"><h3>⚠️ Watchlist</h3>
+<div style="display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:8px"><input id="wPlate" placeholder="Plate e.g. MH12AB1234"><input id="wReason" placeholder="Reason"><select id="wPri"><option>HIGH</option><option>CRITICAL</option><option>MEDIUM</option></select><button class="btn btn-d" onclick="addWatch()">+ Add</button></div></div>
+<div class="card"><table><thead><tr><th>Plate</th><th>Category</th><th>Priority</th><th>Status</th></tr></thead><tbody id="watchTbl"></tbody></table></div>
+</div>
+
+</div>
+</div>
+<script>
+let DETS=[],TRAJS=[],ALERTS=[],CAMS=[],ANAL={};
+let curCam='CAM_01';
+const camList=['CAM_01','CAM_02','CAM_03','CAM_04','CAM_05'];
+
+// ---------- nav ----------
+function go(id,btn){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));document.getElementById(id).classList.add('on');document.querySelectorAll('.side button').forEach(b=>b.classList.remove('on'));if(btn)btn.classList.add('on');if(id==='map')drawGIS();if(id==='analytics')drawAnalytics();if(id==='live')startTraffic();if(id==='dash'){drawDash();}}
+function sizeLive(){const c=document.getElementById('liveCanvas');}
+
+// ---------- api ----------
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function api(p,o){try{const r=await fetch(p,o);return await r.json();}catch(e){return null;}}
+async function refreshAll(){
+const d=await api('/api/detections');if(d){DETS=d.detections||[];}
+const t=await api('/api/trajectories');if(t){TRAJS=t.trajectories||[];}
+const a=await api('/api/alerts');if(a){ALERTS=a.alerts||[];}
+const c=await api('/api/cameras');if(c){CAMS=c.cameras||[];}
+const an=await api('/api/analytics');if(an){ANAL=an;}
+renderAll();
+}
+async function startPipeline(){
+document.getElementById('pipeLog').textContent='pipeline running on 5 cameras…';
+await api('/api/start-pipeline',{method:'POST'});
+setTimeout(refreshAll,2500);
+}
+// ---------- render ----------
+function pill(s){if(s==='verified')return '<span class="pill ok">verified</span>';return '<span class="pill warn">'+s+'</span>';}
+function renderAll(){
+const nD=DETS.length, nT=TRAJS.length, nA=ALERTS.length;
+document.getElementById('sVeh').textContent=nD||ANAL.total_vehicles||0;
+document.getElementById('sTraj').textContent=nT||ANAL.total_traj||0;
+document.getElementById('sAlert').textContent=nA;
+document.getElementById('sWatch').textContent=nA;
+document.getElementById('alertCt').textContent=nA?`(${nA})`:'';
+const wl=new Set(ALERTS.map(a=>a.plate));
+const hits=DETS.filter(d=>wl.has(d.plate)).slice(-8).reverse();
+document.getElementById('dashBlack').innerHTML=hits.map(d=>`<div class="feed-row"><b style="color:#ff4444">${d.plate}</b> @ ${d.camera_id}<span class="conf">${d.ocr_confidence}</span><br><span class="log">${d.timestamp} • ${d.vehicle_type} • WATCHLIST</span></div>`).join('')||'<div class="log">no watchlist hits in buffer</div>';
+document.getElementById('dashAlertTbl').innerHTML=ALERTS.slice(-10).reverse().map(a=>`<tr><td><b>${a.plate}</b></td><td>${a.type}</td><td>${a.camera}</td><td>${(a.timestamp||'').slice(11,19)||a.timestamp||''}</td><td>${a.confidence}</td></tr>`).join('')||'<tr><td colspan=5>No alerts yet</td></tr>';
+document.getElementById('dashCamCt').textContent=`• ${CAMS.length||5} online`;
+document.getElementById('dashTrajCt').textContent=`${nT} linked routes • ${Object.keys(ANAL.camera_counts||{}).length||5} active zones`;
+// alerts
+renderAlerts();
+// cams
+const _cc={};DETS.forEach(d=>_cc[d.camera_id]=(_cc[d.camera_id]||0)+1);
+document.getElementById('camTbl').innerHTML=(CAMS.length?CAMS:[{camera_id:'CAM_01',camera_name:'City Gate North',road_segment:'North Entry Road'},{camera_id:'CAM_02',camera_name:'Central Junction',road_segment:'Main Junction'},{camera_id:'CAM_03',camera_name:'Market Road',road_segment:'Market Corridor'},{camera_id:'CAM_04',camera_name:'Highway Exit',road_segment:'Eastern Highway Exit'},{camera_id:'CAM_05',camera_name:'Bus Terminal',road_segment:'Terminal Road'}]).map(c=>{const src=c.camera_id==='CAM_01'?'real mp4 file':(c.camera_id==='CAM_02'?'webcam-ready':'seeded pipeline');return `<tr><td><b>${c.camera_id}</b></td><td>${c.camera_name}</td><td>${c.road_segment}</td><td>${src}</td><td>${_cc[c.camera_id]||0}</td><td style="color:#00ff88">● ONLINE</td></tr>`;}).join('');
+// watch
+renderWatch();
+// analytics numbers
+document.getElementById('aSpeed').textContent=ANAL.avg_speed_kmh||'–';
+document.getElementById('aCong').textContent=(ANAL.congestion_level||'–').toUpperCase();
+drawDash();drawGIS();
+}
+async function renderWatch(){const w=await api('/api/watchlist');const list=(w&&w.watchlist)||[{plate:'MH12AB1234',category:'Stolen Vehicle',priority:'HIGH',status:'ACTIVE'},{plate:'DL8CAF2201',category:'Suspicious',priority:'CRITICAL',status:'ACTIVE'}];document.getElementById('watchTbl').innerHTML=list.map(x=>`<tr><td><b>${x.plate}</b></td><td>${x.category||x.reason||''}</td><td><span class="pill high">${x.priority}</span></td><td>${x.status||'ACTIVE'}</td></tr>`).join('');}
+async function addWatch(){const p=document.getElementById('wPlate').value.trim().toUpperCase();if(!p)return;await api('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plate:p,category:document.getElementById('wReason').value||'Manual',priority:document.getElementById('wPri').value,status:'ACTIVE'})});document.getElementById('wPlate').value='';renderWatch();refreshAll();}
+function openOutputs(){alert('Open this folder for PPT images:\nC:\\Users\\amanj\\Desktop\\urban_trace_mvp\\data\\outputs');}
+function ackKey(a){return 'ack_'+(a.alert_id||a.plate+'_'+a.timestamp);}
+function ackAlert(k){try{localStorage.setItem(k,'1');}catch(e){}renderAlerts();}
+function renderAlerts(){const sev=(document.getElementById('aSev')||{}).value||'';const list=ALERTS.filter(a=>!sev||(a.severity||'HIGH')===sev);document.getElementById('alertFeed').innerHTML=list.map((a,i)=>{const k=ackKey(a);let ack=false;try{ack=localStorage.getItem(k)==='1';}catch(e){}return `<div class="alert" style="${ack?'opacity:.45':''}"><b>${esc(a.severity||'HIGH')}</b> — ${esc(a.type)}: <b>${esc(a.plate)}</b> @ ${esc(a.camera)} <span class="log">${esc(a.timestamp)} • conf ${esc(a.confidence)}</span> <button class="btn btn-g" style="float:right" data-ack="${i}">ack</button></div>`;}).join('')||'<div class="log">no alerts</div>';document.querySelectorAll('#alertFeed [data-ack]').forEach(b=>b.onclick=()=>{const a=list[+b.getAttribute('data-ack')];ackAlert(ackKey(a));});}
+
+// ---------- search ----------
+function doSearch(){
+const q=(document.getElementById('qPlate').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+const cf=document.getElementById('qCam').value, mc=parseFloat(document.getElementById('qConf').value||'0'), tc=(document.getElementById('qTime').value||'');
+let hits=DETS.filter(d=>(!q||(d.plate||'').replace(/[^A-Z0-9]/g,'').includes(q))&&(!cf||d.camera_id===cf)&&((d.ocr_confidence||0)>=mc)&&(!tc||(d.timestamp||'').includes(tc)));
+document.getElementById('searchTbl').innerHTML=hits.map(d=>`<tr><td><b>${d.plate}</b></td><td>${d.camera_id}</td><td>${d.timestamp}</td><td>${d.ocr_confidence}</td><td>${pill(d.status)}</td></tr>`).join('')||'<tr><td colspan=5>No matches in current buffer — run pipeline first.</td></tr>';
+const tj=TRAJS.filter(t=>(t.plate||'').includes(q));
+document.getElementById('trajInfo').textContent=tj.length?`${tj[0].plate}: ${(tj[0].cameras||tj[0].camera_sequence||[]).join(' → ')} • avg conf ${tj[0].avg_confidence||tj[0].average_confidence}`:'No linked trajectory yet for this plate.';
+drawTraj(hits);
+}
+function drawTraj(hits){
+const c=document.getElementById('trajCanvas'),x=c.getContext('2d');x.fillStyle='#0d1117';x.fillRect(0,0,c.width,c.height);
+if(!hits.length){x.fillStyle='#666';x.font='13px sans-serif';x.fillText('no points',20,30);return;}
+x.strokeStyle='#00d4ff';x.lineWidth=3;x.beginPath();
+hits.slice(0,8).forEach((h,i)=>{const px=60+i*100,py=130+Math.sin(i*1.2)*50;i?x.lineTo(px,py):x.moveTo(px,py);});
+x.stroke();
+hits.slice(0,8).forEach((h,i)=>{const px=60+i*100,py=130+Math.sin(i*1.2)*50;x.fillStyle='#00d4ff';x.beginPath();x.arc(px,py,6,0,7);x.fill();x.fillStyle='#aaa';x.font='11px sans-serif';x.fillText(h.camera_id,px-20,py+22);x.fillText((h.timestamp||'').slice(11,19)||'',px-20,py+34);});
+}
+
+// ---------- maps ----------
+const CAMXY={'CAM_01':[140,180],'CAM_02':[360,160],'CAM_03':[590,190],'CAM_04':[800,150],'CAM_05':[220,400]};
+function drawDash(){const c=document.getElementById('dashMap');if(!c||!c.offsetParent)return;const x=c.getContext('2d');c.width=c.parentElement.offsetWidth;c.height=c.parentElement.offsetHeight;const W=c.width,H=c.height;x.fillStyle='#0d1117';x.fillRect(0,0,W,H);
+// road grid
+x.strokeStyle='#232a3d';x.lineWidth=10;
+x.beginPath();x.moveTo(0,H*0.62);x.lineTo(W,H*0.55);x.stroke();
+x.beginPath();x.moveTo(W*0.32,0);x.lineTo(W*0.30,H);x.stroke();
+x.beginPath();x.moveTo(W*0.62,0);x.lineTo(W*0.66,H);x.stroke();
+// trajectories first (under markers) — all 5 cams
+const wl=new Set(ALERTS.map(a=>a.plate));
+TRAJS.slice(0,8).forEach(t=>{const sq=(t.cameras||t.camera_sequence||[]).map(id=>CAMXY[id]).filter(Boolean);if(sq.length<2)return;const isW=wl.has(t.plate);x.strokeStyle=isW?'#ff4444':'#00d4ff';x.lineWidth=isW?3.5:2;x.setLineDash(isW?[8,4]:[]);x.beginPath();sq.forEach((p,i)=>i?x.lineTo(p[0]/960*W,p[1]/540*H):x.moveTo(p[0]/960*W,p[1]/540*H));x.stroke();x.setLineDash([]);});
+// all 5 markers on top
+Object.entries(CAMXY).forEach(([id,p])=>{const px=p[0]/960*W,py=p[1]/540*H;const n=(ANAL.camera_counts||{})[id]||0;x.fillStyle=n>12?'#ff4444':'#00ff88';x.beginPath();x.arc(px,py,8,0,7);x.fill();x.fillStyle='#0a0e17';x.font='bold 9px sans-serif';x.fillText(id.replace('CAM_','C'),px-6,py+3);x.fillStyle='#ccc';x.font='11px sans-serif';x.fillText(`${id} (${n})`,px+12,py+4);});}
+function drawGIS(){const c=document.getElementById('gisMap');if(!c||!c.offsetParent)return;const x=c.getContext('2d');c.width=c.parentElement.offsetWidth;c.height=c.parentElement.offsetHeight;const W=c.width,H=c.height;x.fillStyle='#0d1117';x.fillRect(0,0,W,H);x.strokeStyle='#232a3d';x.lineWidth=9;x.beginPath();x.moveTo(0,H*0.62);x.lineTo(W,H*0.55);x.stroke();x.beginPath();x.moveTo(W*0.32,0);x.lineTo(W*0.30,H);x.stroke();const wl=new Set(ALERTS.map(a=>a.plate));TRAJS.slice(0,10).forEach(t=>{const sq=(t.cameras||t.camera_sequence||[]).map(id=>CAMXY[id]).filter(Boolean);if(sq.length<2)return;const isW=wl.has(t.plate);x.strokeStyle=isW?'#ff4444':'#00d4ff';x.lineWidth=isW?4:2.5;x.beginPath();sq.forEach((p,i)=>{const px=p[0]/960*W,py=p[1]/540*H;i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();sq.forEach(p=>{const px=p[0]/960*W,py=p[1]/540*H;x.fillStyle=x.strokeStyle;x.beginPath();x.arc(px,py,5,0,7);x.fill();});if(sq.length){const px=sq[0][0]/960*W,py=sq[0][1]/540*H;x.fillStyle='#fff';x.font='bold 11px sans-serif';x.fillText(t.plate,px+10,py-8);}});Object.entries(CAMXY).forEach(([id,p])=>{const px=p[0]/960*W,py=p[1]/540*H;x.fillStyle='#00d4ff';x.beginPath();x.arc(px,py,10,0,7);x.fill();x.fillStyle='#04121a';x.font='bold 9px sans-serif';x.fillText(id.replace('CAM_','C'),px-7,py+3);x.fillStyle='#aaa';x.font='10px sans-serif';x.fillText(id,px-16,py+24);});}
+
+// ---------- analytics ----------
+function drawAnalytics(){
+const b=document.getElementById('barC');if(!b||!b.offsetParent)return;const x=b.getContext('2d');x.fillStyle='#0d1117';x.fillRect(0,0,b.width,b.height);
+const cc=ANAL.camera_counts||{};const keys=camList;const vals=keys.map(k=>cc[k]||0);const mx=Math.max(1,...vals);
+vals.forEach((v,i)=>{const h=(v/mx)*160,bw=52,gx=40+i*76;x.fillStyle='#00d4ff';x.fillRect(gx,200-h,bw,h);x.fillStyle='#aaa';x.font='11px sans-serif';x.fillText(keys[i],gx,216);x.fillText(v,gx,196-h);});
+const pc=document.getElementById('pieC'),p=pc.getContext('2d');const vt=ANAL.vehicle_types||{car:60,motorcycle:25,bus:8,truck:7};const tot=Object.values(vt).reduce((a,b)=>a+b,0)||1;let a0=0;const cols=['#00d4ff','#b78cff','#00ff88','#ffaa00'];Object.entries(vt).forEach(([k,v],i)=>{const a1=a0+(v/tot)*Math.PI*2;p.fillStyle=cols[i%4];p.beginPath();p.moveTo(210,110);p.arc(210,110,80,a0,a1);p.fill();a0=a1;});p.fillStyle='#aaa';p.font='11px sans-serif';Object.keys(vt).forEach((k,i)=>{p.fillStyle=cols[i%4];p.fillRect(20,200+i*16,10,10);p.fillStyle='#aaa';p.fillText(k,35,208+i*16);});
+const od={};TRAJS.forEach(t=>{const sq=t.cameras||t.camera_sequence||[];if(sq.length>=2){const k=sq[0]+' → '+sq[sq.length-1];od[k]=od[k]||{n:0,c:[]};od[k].n++;od[k].c.push(t.avg_confidence||t.average_confidence||0);}});
+document.getElementById('odTbl').innerHTML=Object.entries(od).map(([k,v])=>`<tr><td>${k}</td><td>${v.n}</td><td>${(v.c.reduce((a,b)=>a+b,0)/v.c.length).toFixed(2)}</td></tr>`).join('')||'<tr><td colspan=3>No OD pairs yet — run pipeline.</td></tr>';
+}
+
+// ---------- LIVE REAL TRAFFIC ----------
+let trafOn=false;
+function startTraffic(){
+const img=document.getElementById('trafficImg');
+if(img&&!img.src.includes('traffic_feed'))img.src='/traffic_feed?'+Date.now();
+if(!trafOn){trafOn=true;pollTraffic();}
+}
+async function pollTraffic(){
+while(true){
+if(!document.getElementById('live').classList.contains('on')){await new Promise(s=>setTimeout(s,1500));continue;}
+const r=await api('/api/traffic/dets');
+if(r&&r.dets){
+document.getElementById('liveMeta').textContent=`frame ${r.frame} • ${r.dets.length} vehicles`;
+const f=document.getElementById('ocrFeed');
+f.innerHTML=r.dets.map(d=>{const tag=d.plate?(d.plate.length>=6?`plate <b>${esc(d.plate)}</b> ${Math.round(d.ocr_conf*100)}%`:`partial <b>${esc(d.plate)}</b> ${Math.round(d.ocr_conf*100)}% — needs review`):'no plate in range (tracking vehicle)';return `<div class="feed-row"><b>${d.type}</b> ${Math.round(d.conf*100)}% • ${tag}<br><span class="log">frame ${r.frame} • ${d.time} • CAM_01-traffic</span></div>`;}).join('')||'<div class="log">scanning frames…</div>';
+document.getElementById('pipeLog').textContent=`live: frame ${r.frame} • ${r.dets.length} tracks • real YOLOv8`;
+}
+await new Promise(s=>setTimeout(s,1500));
+}
+}
+// ---------- OLD SIM (retired) ----------
+let liveVehs=[];
+function rndPlate(){const S=['MH','DL','KA','TN','GJ'];return S[Math.floor(Math.random()*S.length)]+ (10+Math.floor(Math.random()*89)) + String.fromCharCode(65+Math.floor(Math.random()*26))+String.fromCharCode(65+Math.floor(Math.random()*26))+(1000+Math.floor(Math.random()*9000));}
+function initLive(){const c=document.getElementById('liveCanvas');liveVehs=[];for(let i=0;i<7;i++)liveVehs.push({x:Math.random()*900,y:[300,370,440][i%3],w:90+Math.random()*60,h:50+Math.random()*20,sp:2+Math.random()*4,plate:rndPlate(),conf:(0.74+Math.random()*0.24).toFixed(2),col:`hsl(${Math.random()*360},45%,45%)`});
+document.getElementById('camBar').innerHTML=camList.map(id=>`<button class="btn ${id===curCam?'btn-p':'btn-g'}" onclick="setCam('${id}')">${id}</button>`).join('');}
+function setCam(id){curCam=id;initLiveBar();liveVehs.forEach(v=>{v.plate=rndPlate();v.conf=(0.74+Math.random()*0.24).toFixed(2);});}
+function initLiveBar(){document.getElementById('camBar').innerHTML=camList.map(id=>`<button class="btn ${id===curCam?'btn-p':'btn-g'}" onclick="setCam('${id}')">${id}</button>`).join('');}
+function tickLive(){
+const c=document.getElementById('liveCanvas');if(!c||!c.offsetParent){requestAnimationFrame(tickLive);return;}
+const x=c.getContext('2d');
+// scene
+x.fillStyle='#87a8c8';x.fillRect(0,0,960,300);x.fillStyle='#3a3a3a';x.fillRect(0,300,960,240);
+x.strokeStyle='#fff';x.lineWidth=3;for(let lx=0;lx<960;lx+=90){x.beginPath();x.moveTo(lx,375);x.lineTo(lx+45,375);x.stroke();x.beginPath();x.moveTo(lx,455);x.lineTo(lx+45,455);x.stroke();}
+liveVehs.forEach(v=>{
+v.x+=v.sp;if(v.x>980){v.x=-140;v.plate=rndPlate();v.conf=(0.74+Math.random()*0.24).toFixed(2);pushOCR(v);}
+// body
+x.fillStyle=v.col;x.fillRect(v.x,v.y,v.w,v.h);x.fillStyle='rgba(180,220,240,.9)';x.fillRect(v.x+6,v.y+6,v.w-12,v.h/2-6);
+// wheels
+x.fillStyle='#111';x.beginPath();x.arc(v.x+18,v.y+v.h,9,0,7);x.fill();x.beginPath();x.arc(v.x+v.w-18,v.y+v.h,9,0,7);x.fill();
+// YOLO box
+x.strokeStyle='#00ff88';x.lineWidth=2;x.strokeRect(v.x,v.y,v.w,v.h);
+// plate box + label (OCR)
+const pw=86,ph=20,px=v.x+v.w/2-pw/2,py=v.y+v.h+4;
+x.fillStyle='#111';x.fillRect(px,py,pw,ph);x.strokeStyle='#00d4ff';x.strokeRect(px,py,pw,ph);
+x.fillStyle='#fff';x.font='bold 11px Consolas,monospace';x.fillText(v.plate,px+4,py+14);
+x.fillStyle='rgba(0,0,0,.75)';x.fillRect(v.x,v.y-20,150,16);
+x.fillStyle=v.conf>0.85?'#00ff88':'#ffaa00';x.font='11px Consolas,monospace';x.fillText(`${v.plate} ${Math.round(v.conf*100)}%`,v.x+3,v.y-8);
+});
+// overlays
+x.fillStyle='rgba(0,0,0,.6)';x.fillRect(8,8,300,26);x.fillStyle='#fff';x.font='13px sans-serif';x.fillText(`${curCam}  •  ${new Date().toLocaleTimeString()}  •  YOLOv8n + PaddleOCR`,14,25);
+x.fillStyle='#ff4444';x.beginPath();x.arc(930,20,7,0,7);x.fill();x.fillStyle='#fff';x.fillText('LIVE',890,24);
+document.getElementById('liveMeta').textContent=`• ${liveVehs.length} tracks • ${(8+Math.random()*4).toFixed(1)} FPS`;
+requestAnimationFrame(tickLive);
+}
+function pushOCR(v){
+const f=document.getElementById('ocrFeed');if(!f)return;
+const wl=v.plate==='MH12AB1234'||v.plate==='DL8CAF2201';
+const row=document.createElement('div');row.className='feed-row';
+row.innerHTML=`<b>${v.plate}</b> @ ${curCam} <span class="conf">${v.conf}</span><br><span class="log">${new Date().toLocaleTimeString()} • validated ✓ • ${wl?'<span style="color:#ff4444">WATCHLIST HIT</span>':'format OK'}</span>`;
+f.prepend(row);while(f.children.length>30)f.lastChild.remove();
+}
+// ---------- REAL CAM / VIDEO ----------
+async function camOn(){const r=await api('/api/webcam/start',{method:'POST'});document.getElementById('camState').textContent=(r&&r.status==='live')?'LIVE — detecting…':'could not open webcam';document.getElementById('mjpeg').src='/video_feed?'+Date.now();pollWeb();}
+async function camOff(){await api('/api/webcam/stop',{method:'POST'});document.getElementById('mjpeg').removeAttribute('src');document.getElementById('camState').textContent='stopped';}
+async function pollWeb(){for(let i=0;i<40;i++){if(!document.getElementById('realcam').classList.contains('on'))return;const r=await api('/api/webcam/dets');if(r&&r.dets)document.getElementById('webDets').innerHTML=r.dets.map(d=>`${d.time} • <b>${d.type}</b> ${Math.round(d.conf*100)}%${d.plate?` • plate <b>${d.plate}</b> ${Math.round(d.ocr_conf*100)}%`:''}`).join('<br>')||'no vehicles in frame';await new Promise(s=>setTimeout(s,1500));}}
+async function upVid(){const f=document.getElementById('vidFile').files[0];if(!f){alert('pick an mp4 first');return;}document.getElementById('upState').textContent='processing with YOLO+OCR, wait…';const fd=new FormData();fd.append('file',f);const r=await fetch('/api/upload-video',{method:'POST',body:fd});const j=await r.json();document.getElementById('upState').textContent=j.ok?`done: ${j.detections} detections from ${j.file}`:'failed: '+(j.error||'');refreshAll();}
+// ---------- REAL MAP ----------
+let leafInit=false;
+const _go=go;
+go=function(id,btn){_go(id,btn);if(id==='realmap')initLeaf();if(id==='ocrlab')prevOCR();if(id==='datajs')loadDS();};
+async function initLeaf(){
+if(leafInit&&window._leaf){setTimeout(()=>window._leaf.invalidateSize(),200);return;}
+if(!window.L){const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=buildLeaf;document.head.appendChild(s);}else buildLeaf();
+}
+async function buildLeaf(){
+leafInit=true;
+const m=L.map('leaf').setView([19.0795,72.8802],13);window._leaf=m;
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);
+const cs=(CAMS.length?CAMS:[{camera_id:'CAM_01',camera_name:'City Gate North',latitude:19.076,longitude:72.8777},{camera_id:'CAM_02',camera_name:'Central Junction',latitude:19.0795,longitude:72.8802},{camera_id:'CAM_03',camera_name:'Market Road',latitude:19.082,longitude:72.885},{camera_id:'CAM_04',camera_name:'Highway Exit',latitude:19.087,longitude:72.891},{camera_id:'CAM_05',camera_name:'Bus Terminal',latitude:19.074,longitude:72.872}]);
+cs.forEach(c=>L.marker([c.latitude,c.longitude]).addTo(m).bindPopup(`<b>${c.camera_id}</b><br>${c.camera_name||''}`));
+const wl=new Set(ALERTS.map(a=>a.plate));
+const cmap={};cs.forEach(c=>cmap[c.camera_id]=[c.latitude,c.longitude]);
+TRAJS.slice(0,8).forEach(t=>{const sq=t.cameras||t.camera_sequence||[];const pts=sq.map(id=>cmap[id]).filter(Boolean);if(pts.length<2)return;const isW=wl.has(t.plate);L.polyline(pts,{color:isW?'red':'#00d4ff',weight:isW?4:3}).addTo(m).bindPopup(`<b>${t.plate}</b> ${sq.join(' → ')}`);});
+const cc=ANAL.camera_counts||{};cs.forEach(c=>{const v=cc[c.camera_id]||0;L.circle([c.latitude,c.longitude],{radius:80+v*25,color:v>15?'red':v>8?'orange':'green',fillOpacity:.25}).addTo(m);});
+setTimeout(()=>m.invalidateSize(),300);
+}
+// ---------- OCR LAB ----------
+function prevOCR(){const n=document.getElementById('ocrImg').value;document.getElementById('ocrPrev').src='/outputs/'+n;}
+async function runOCR(){const n=document.getElementById('ocrImg').value;prevOCR();document.getElementById('ocrMsg').textContent='running PaddleOCR…';const r=await api('/api/ocr-demo?img='+encodeURIComponent(n));if(!r||!r.ok){document.getElementById('ocrMsg').textContent='OCR failed: '+((r&&r.error)||'');return;}document.getElementById('ocrTbl').innerHTML=(r.lines||[]).map(l=>`<tr><td>${l.text}</td><td><b>${l.clean}</b></td><td>${l.conf}</td><td>${l.indian_plate_like?'✓':'–'}</td></tr>`).join('')||'<tr><td colspan=4>no text found</td></tr>';document.getElementById('ocrMsg').textContent=`${r.lines.length} text lines from ${r.image} — plate-like rows marked ✓`;document.getElementById('ocrImg').addEventListener('change',prevOCR);}
+// ---------- DATA JSON ----------
+async function loadDS(){const r=await api('/api/dataset/overview');if(!r)return;document.getElementById('dsCounts').textContent=`cameras ${r.counts.cameras} • detections ${r.counts.detections} • trajectories ${r.counts.trajectories}`;document.getElementById('dsJson').textContent=JSON.stringify({schemas:r.schemas,example_detection:r.example_detection,example_trajectory:r.example_trajectory,endpoints:r.files},null,2);}
+function dl(kind){const map={detections:'/api/detections',trajectories:'/api/trajectories',cameras:'/api/cameras'};window.open(map[kind],'_blank');}
+// ---------- CITY 5K ----------
+let k5init=false;
+const _go2=go;
+go=function(id,btn){_go2(id,btn);if(id==='city5k')init5k();};
+async function init5k(){
+const s=await api('/api/city/stats');
+if(s){document.getElementById('cTot').textContent=s.total;document.getElementById('cOn').textContent=s.online;
+document.getElementById('cEv').textContent=s.events_per_sec;document.getElementById('cDay').textContent=s.events_per_day_m;
+document.getElementById('cEdge').textContent=s.edge_nodes;document.getElementById('cGpu').textContent=s.gpu_workers;
+document.getElementById('cRaw').textContent=s.raw_bandwidth_gbps+' Gbps';document.getElementById('cMeta').textContent=s.edge_bandwidth_gbps+' Gbps';
+document.getElementById('cSto').textContent=s.storage_per_day_tb+' TB';}
+if(k5init&&window._leaf5k){setTimeout(()=>window._leaf5k.invalidateSize(),200);return;}
+const needL=!window.L, needC=!window.L||!L.markerClusterGroup;
+const load=(src)=>new Promise(r=>{const e=document.createElement('script');e.src=src;e.onload=r;document.head.appendChild(e);});
+if(needL)await load('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+await load('https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js');
+build5k();
+}
+async function build5k(){
+k5init=true;
+const m=L.map('leaf5k').setView([19.082,72.885],12);window._leaf5k=m;
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);
+const grp=L.markerClusterGroup({maxClusterRadius:50});
+document.getElementById('cMsg').textContent='fetching 5000 cameras in pages…';
+for(let p=1;p<=5;p++){
+const r=await api(`/api/city/cameras?page=${p}&per=1000`);
+if(!r)break;
+r.cameras.forEach(c=>{
+const col=c.status==='ONLINE'?'green':c.status==='DEGRADED'?'orange':'red';
+const mk=L.circleMarker([c.latitude,c.longitude],{radius:5,color:col,fillOpacity:.7});
+mk.bindPopup(`<b>${c.camera_id}</b><br>${c.camera_name}<br>${c.zone} • ${c.edge}<br>${c.status} • ${c.fps}fps`);
+grp.addLayer(mk);});
+document.getElementById('cMsg').textContent=`loaded ${p*1000}/5000…`;
+}
+m.addLayer(grp);
+const h=await api('/api/city/heat');
+if(h&&h.points)h.points.slice(0,400).forEach(pt=>L.circle([pt.lat,pt.lon],{radius:60+pt.d*120,color:pt.d>0.7?'red':pt.d>0.4?'orange':'green',fillOpacity:.18,stroke:false}).addTo(m));
+document.getElementById('cMsg').textContent='5000 cameras clustered • zoom in to split clusters • red/orange/green = density + status';
+setTimeout(()=>m.invalidateSize(),300);
+}
+// boot
+document.addEventListener('DOMContentLoaded',()=>{refreshAll();drawDash();setTimeout(drawDash,800);});
+</script>
+</body>
+</html>

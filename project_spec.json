@@ -1,0 +1,24 @@
+{
+  "project": "UrbanTrace AI",
+  "version": "1.0.0",
+  "description": "City-Wide AI Platform for Multi-Camera ANPR Trajectory Tracking and Urban Traffic Analytics",
+  "mvp": true,
+  "tech_stack": {
+    "ai_cv": "YOLOv8-nano + PaddleOCR",
+    "backend": "Python + Flask + FastAPI",
+    "database": "PostgreSQL + PostGIS (prod) / SQLite (MVP)",
+    "frontend": "React + TypeScript + Leaflet.js",
+    "event_streaming": "Apache Kafka / MQTT",
+    "edge": "NVIDIA Jetson Orin Nano",
+    "deployment": "Docker Compose"
+  },
+  "phases": {
+    "phase_1": {"name": "Problem Validation", "duration": "Day 1", "tasks": ["Define users", "Select pilot geography", "Create camera metadata model"]},
+    "phase_2": {"name": "Data Preparation", "duration": "Day 1-2", "tasks": ["Collect traffic videos", "Create annotations", "Generate synthetic test data"]},
+    "phase_3": {"name": "ANPR Pipeline", "duration": "Day 2-4", "tasks": ["Vehicle detection", "Plate detection", "OCR integration", "Temporal fusion"]},
+    "phase_4": {"name": "Event & Database", "duration": "Day 3-4", "tasks": ["Event schema", "API endpoints", "PostGIS storage", "Geospatial indexing"]},
+    "phase_5": {"name": "Trajectory Engine", "duration": "Day 4-5", "tasks": ["Multi-camera matching", "Route plausibility", "Map visualization"]},
+    "phase_6": {"name": "Analytics & Alerts", "duration": "Day 5-6", "tasks": ["Traffic counts", "Heatmaps", "Blacklist matching", "Alert workflow"]},
+    "phase_7": {"name": "Hardening", "duration": "Day 6-7", "tasks": ["False positive testing", "Clock sync", "Role-based access", "Audit logs"]}
+  }
+}

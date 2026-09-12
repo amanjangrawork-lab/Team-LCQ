@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Large binaries — teammates download/regenerate these
+*.pt
+*.onnx
+*.mp4
+*.avi
+*.mkv
+*.mov
+data/videos/
+data/outputs/
+__pycache__/
+*.pyc
