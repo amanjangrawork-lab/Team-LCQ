@@ -1,12 +1,15 @@
 """
-UrbanTrace AI MVP Pipeline
-- Generates synthetic traffic video
-- Runs YOLOv8 detection + OCR on each frame
-- Stores detections in memory
-- Serves a Flask dashboard
+NetraPath MVP Pipeline
+- Serves the NetraPath dashboard (live ANPR + trajectories + analytics)
+- Real 4K traffic file → fast YOLOv8 + OCR MJPEG feed
+- Webcam / phone-camera feed with selectable source
+- Async video-upload jobs with progress
+- Stores detections in memory (SQLite/PostGIS in production)
 """
 import sys
-sys.path.insert(0, r'C:\Users\amanj\Desktop\urban_trace_mvp')
+from pathlib import Path as _Path
+BASE_DIR = _Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
 
 import cv2
 import numpy as np
@@ -27,16 +30,45 @@ from flask_cors import CORS
 import backend.real_vision as RV
 import backend.city_scale as CS
 
-app = Flask(__name__, template_folder="C:/Users/amanj/Desktop/urban_trace_mvp/backend/templates", static_folder="C:/Users/amanj/Desktop/urban_trace_mvp/backend/static")
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
-CORS(app)
+app = Flask(__name__, template_folder=str(BASE_DIR / "backend" / "templates"), static_folder=str(BASE_DIR / "backend" / "static"))
+app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 MB cap (was 500)
+app.config['SECRET_KEY'] = os.environ.get('NETRAPATH_SECRET', 'netrapath-dev-change-me')
+CORS(app, resources={r"/api/*": {"origins": "*"}})  # demo-open; restrict to your domain in prod
+
+# Async upload jobs: job_id -> {state, progress, total, detections, error, file}
+upload_jobs = {}
+upload_jobs_lock = threading.Lock()
+
+PLATE_RE = __import__('re').compile(r'^[A-Z0-9]{4,12}$')
 
 @app.after_request
 def sec_headers(resp):
     resp.headers['X-Content-Type-Options'] = 'nosniff'
     resp.headers['X-Frame-Options'] = 'SAMEORIGIN'
     resp.headers['Referrer-Policy'] = 'no-referrer'
+    resp.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    # Keep inline <script>/<style> working while blocking external injections.
+    # Leaflet CDN + OSM/CARTO tiles explicitly allowed (fixes blank maps under strict CSP).
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; "
+        "connect-src 'self'; font-src 'self' data:; frame-ancestors 'self'"
+    )
     return resp
+
+@app.errorhandler(413)
+def too_large(_e):
+    return jsonify({'ok': False, 'error': 'file too large (max 200 MB)'}), 413
+
+@app.errorhandler(404)
+def not_found(_e):
+    return jsonify({'ok': False, 'error': 'not found'}), 404
+
+@app.errorhandler(500)
+def server_err(_e):
+    return jsonify({'ok': False, 'error': 'internal error'}), 500
 
 # Global state
 detections_db = []
@@ -55,7 +87,7 @@ watchlist_db = [
 
 # Load YOLOv8
 print("[LOADING] YOLOv8-nano...")
-vehicle_model = YOLO('yolov8n.pt')
+vehicle_model = YOLO(str(BASE_DIR / 'yolov8n.pt'))
 print("[READY] YOLOv8 loaded")
 
 # State for live simulation
@@ -181,9 +213,16 @@ def get_watchlist():
 
 @app.route('/api/watchlist', methods=['POST'])
 def add_watchlist():
-    data = request.json
-    watchlist_db.append(data)
-    return jsonify({'status': 'added', 'entry': data})
+    data = request.get_json(force=True, silent=True) or {}
+    plate = str(data.get('plate', '')).upper().replace(' ', '')
+    if not PLATE_RE.match(plate):
+        return jsonify({'ok': False, 'error': 'plate must be 4-12 chars A-Z/0-9'}), 400
+    entry = {'plate': plate,
+             'category': str(data.get('category', 'Manual'))[:60],
+             'priority': data.get('priority', 'HIGH') if data.get('priority') in ('HIGH', 'CRITICAL', 'MEDIUM', 'LOW') else 'HIGH',
+             'status': 'ACTIVE'}
+    watchlist_db.append(entry)
+    return jsonify({'status': 'added', 'entry': entry})
 
 @app.route('/api/alerts')
 def get_alerts():
@@ -279,14 +318,43 @@ def traffic_feed():
 def traffic_dets():
     return jsonify({'dets': RV.traffic.get('last_dets', []), 'frame': RV.traffic.get('frame_no', 0)})
 
+@app.route('/api/traffic/status')
+def traffic_status():
+    try:
+        st = RV.traffic_status()
+    except Exception:
+        st = {'source': RV.TRAFFIC_PATH, 'exists': False, 'frame': 0, 'fps': 0, 'error': 'status unavailable'}
+    return jsonify(st)
+
+@app.route('/api/traffic/restart', methods=['POST'])
+def traffic_restart():
+    try:
+        ok = RV.traffic_restart()
+    except Exception:
+        ok = False
+    return jsonify({'status': 'live' if ok else 'failed', 'source': RV.traffic.get('source', '')})
+
 @app.route('/video_feed')
 def video_feed():
     return Response(RV.mjpeg_gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/api/webcam/list')
+def webcam_list():
+    try:
+        cams = RV.list_cameras()
+    except Exception:
+        cams = [{'index': 0, 'label': 'Camera 0 (built-in / default)'}]
+    return jsonify({'cameras': cams, 'current': RV.webcam.get('source', 0),
+                    'hint': 'Phone apps (Iriun / DroidCam / Smart Connect) usually show as Camera 1-3, or paste their MJPEG URL below.'})
+
 @app.route('/api/webcam/start', methods=['POST'])
 def webcam_start():
-    ok = RV.webcam_start(0)
-    return jsonify({'status': 'live' if ok else 'no_camera'})
+    data = request.get_json(force=True, silent=True) or {}
+    src = data.get('source', data.get('src', 0))
+    if src in (None, ''):
+        src = 0
+    ok = RV.webcam_start(src)
+    return jsonify({'status': 'live' if ok else 'no_camera', 'source': RV.webcam.get('source', src)})
 
 @app.route('/api/webcam/stop', methods=['POST'])
 def webcam_stop():
@@ -299,25 +367,76 @@ def webcam_dets():
 
 @app.route('/api/upload-video', methods=['POST'])
 def upload_video():
+    """Async upload → returns a job_id immediately; poll status for progress.
+
+    Old behaviour blocked the request 10-20 min. Now the heavy
+    YOLO+OCR runs in a background thread with a progress callback.
+    """
     from werkzeug.utils import secure_filename
+    import uuid
     f = request.files.get('file')
     if not f or not f.filename:
         return jsonify({'ok': False, 'error': 'no file'}), 400
     allowed = ('.mp4', '.avi', '.mov', '.mkv')
     if not f.filename.lower().endswith(allowed):
         return jsonify({'ok': False, 'error': 'only mp4/avi/mov/mkv'}), 400
-    os.makedirs('C:/Users/amanj/Desktop/urban_trace_mvp/data/videos', exist_ok=True)
+    with upload_jobs_lock:
+        running = sum(1 for j in upload_jobs.values() if j.get('state') == 'running')
+        if running >= 2:
+            return jsonify({'ok': False, 'error': '2 upload jobs already running — wait a minute'}), 429
+    vid_dir = BASE_DIR / 'data' / 'videos'
+    vid_dir.mkdir(parents=True, exist_ok=True)
     safe = secure_filename(f.filename)[:80] or 'upload.mp4'
-    p = f"C:/Users/amanj/Desktop/urban_trace_mvp/data/videos/{safe}"
+    p = str(vid_dir / safe)
     f.save(p)
-    dets = RV.process_video_file(p)
-    sim_detections.extend(dets)
-    return jsonify({'ok': True, 'file': f.filename, 'detections': len(dets), 'sample': dets[:10]})
+    job_id = uuid.uuid4().hex[:10]
+    with upload_jobs_lock:
+        upload_jobs[job_id] = {'state': 'running', 'progress': 0, 'total': 100,
+                               'detections': 0, 'error': '', 'file': f.filename}
+
+    def _run():
+        def _cb(done, total):
+            try:
+                with upload_jobs_lock:
+                    upload_jobs[job_id]['progress'] = done
+                    upload_jobs[job_id]['total'] = total
+            except Exception:
+                pass
+        try:
+            dets = RV.process_video_file(p, progress_cb=_cb)
+            sim_detections.extend(dets)
+            with upload_jobs_lock:
+                upload_jobs[job_id].update({'state': 'done', 'progress': 1, 'total': 1,
+                                            'detections': len(dets)})
+        except Exception as e:
+            with upload_jobs_lock:
+                upload_jobs[job_id].update({'state': 'failed', 'error': str(e)[:200]})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id, 'file': f.filename,
+                    'status_url': f'/api/upload-video/status/{job_id}'})
+
+@app.route('/api/upload-video/status/<job_id>')
+def upload_status(job_id):
+    with upload_jobs_lock:
+        job = dict(upload_jobs.get(job_id, {}))
+    if not job:
+        return jsonify({'ok': False, 'error': 'unknown job'}), 404
+    prog = job.get('progress', 0)
+    total = job.get('total', 100) or 1
+    try:
+        pct = round(100 * float(prog) / float(total), 1)
+    except Exception:
+        pct = 0
+    job['pct'] = min(pct, 100.0)
+    return jsonify(job)
 
 @app.route('/api/ocr-demo')
 def ocr_demo():
     name = request.args.get('img', 'cam_01_annotated.png')
-    p = f"C:/Users/amanj/Desktop/urban_trace_mvp/data/outputs/{name}"
+    # sanitize + resolve relative to repo so it works on any machine
+    name = os.path.basename(name)
+    p = str(BASE_DIR / 'data' / 'outputs' / name)
     return jsonify(RV.ocr_demo_on_image(p))
 
 @app.route('/api/dataset/overview')
@@ -341,7 +460,7 @@ def dataset_overview():
 def serve_outputs(fname):
     import os as _os
     from flask import send_from_directory, abort
-    base = 'C:/Users/amanj/Desktop/urban_trace_mvp/data/outputs'
+    base = str(BASE_DIR / 'data' / 'outputs')
     if '..' in fname or fname.startswith('/') or fname.startswith('\\'):
         abort(400)
     full = _os.path.normpath(_os.path.join(base, fname))
@@ -358,7 +477,7 @@ def health():
 if __name__ == '__main__':
     # Generate a synthetic video for PPT screenshots
     print("[PPT] Generating demo screenshots...")
-    os.makedirs('data/outputs', exist_ok=True)
+    (BASE_DIR / 'data' / 'outputs').mkdir(parents=True, exist_ok=True)
     
     # Generate traffic snapshots for PPT
     for i, cam in enumerate(camera_config):
@@ -394,9 +513,9 @@ if __name__ == '__main__':
             cv2.putText(frame, f"{pl} {int(cf*100)}%", (bx + 4, by - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 136), 1)
             cv2.rectangle(frame, (bx + bw//2 - 45, by + bh + 3), (bx + bw//2 + 45, by + bh + 22), (0, 0, 0), -1)
             cv2.putText(frame, pl, (bx + bw//2 - 40, by + bh + 17), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.imwrite(f'data/outputs/cam_{i+1:02d}_snapshot.png', frame)
+        cv2.imwrite(str(BASE_DIR / f'data/outputs/cam_{i+1:02d}_snapshot.png'), frame)
         if i == 0:
-            cv2.imwrite('data/outputs/cam_01_annotated.png', frame)
+            cv2.imwrite(str(BASE_DIR / 'data/outputs/cam_01_annotated.png'), frame)
         print(f"[PPT] Saved cam_{i+1:02d}_snapshot.png")
     
     print("[PPT] All snapshots generated.")
