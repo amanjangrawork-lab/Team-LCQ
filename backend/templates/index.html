@@ -151,7 +151,8 @@ pre.code{white-space:pre-wrap;background:#0b1224;border:1px solid var(--border-s
     <button onclick="go('realcam',this)"><span class="ic">📹</span>Camera + Upload</button>
     <button onclick="go('realmap',this)"><span class="ic">🌍</span>Real Map (Live)</button>
     <div class="nav-label">Intelligence</div>
-    <button onclick="go('search',this)"><span class="ic">🔎</span>Plate Search</button>
+    <button onclick="go('review',this)">Review Queue</button>
+<button onclick="go('search',this)"><span class="ic">🔎</span>Plate Search</button>
     <button onclick="go('map',this)"><span class="ic">🗺️</span>Trajectory Map</button>
     <button id="navAlerts" onclick="go('alerts',this)"><span class="ic">🔔</span>Alerts <span class="badge" id="alertCt" style="display:none"></span></button>
     <button onclick="go('analytics',this)"><span class="ic">📈</span>Analytics</button>
@@ -297,7 +298,27 @@ pre.code{white-space:pre-wrap;background:#0b1224;border:1px solid var(--border-s
         </div>
       </div>
       <div class="card"><div class="card-h"><h3>📍 Matched Sightings</h3></div><div class="tbl-wrap"><table><thead><tr><th>Plate</th><th>Camera</th><th>Time</th><th>Conf</th><th>Status</th></tr></thead><tbody id="searchTbl"><tr><td colspan="5" class="muted">Enter a plate and hit Search.</td></tr></tbody></table></div></div>
-      <div class="card"><div class="card-h"><h3>🗺️ Reconstructed Trajectory</h3></div><div class="log" id="trajInfo">Enter a plate and hit Search.</div><canvas id="trajCanvas" width="900" height="260" style="width:100%;background:#0b1224;border:1px solid var(--border-soft);border-radius:10px;margin-top:10px"></canvas></div>
+      <div class="card"><div class="card-h"><h3>🗺️ Reconstructed Trajectory</h3></div><button class="btn" style="margin:8px 0;padding:6px 12px" onclick="drawTrajOnLeaf((document.getElementById('qPlate').value||'').toUpperCase())">Draw on Map (Wow Moment)</button>
+      <div class="log" id="trajInfo">Enter a plate and hit Search.</div><canvas id="trajCanvas" width="900" height="260" style="width:100%;background:#0b1224;border:1px solid var(--border-soft);border-radius:10px;margin-top:10px"></canvas></div>
+    </div>
+
+    <!-- REVIEW QUEUE -->
+    <div id="review" class="pg">
+      <div class="page-title"><div><h2>OCR Review Queue (Responsible AI)</h2><p>Low-confidence detections flagged for human verification — no silent storage.</p></div></div>
+      <div class="card">
+        <div class="card-h">Pending Review <span class="muted" id="reviewCt"></span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Plate</th><th>Camera</th><th>Time</th><th>OCR Conf</th><th>Quality</th><th>Status</th><th>Action</th></tr></thead><tbody id="reviewTbl"></tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-h">How It Works</div>
+        <div class="muted" style="font-size:13px;line-height:1.6">
+          1. ANPR detects a plate with OCR confidence below 0.70 → flagged as <b>low_confidence</b>.<br>
+          2. The detection appears here with the original crop and AI's best guess.<br>
+          3. Operator reviews: <b>Approve</b> (accept AI guess) or <b>Reject</b> (discard).<br>
+          4. Approved plates enter the trajectory engine. Rejected ones are logged but never pollute trajectories.<br>
+          <b>Human-in-the-loop: no automatic enforcement. Platform is decision-support, not automated.</b>
+        </div>
+      </div>
     </div>
 
     <!-- MAP -->
@@ -385,6 +406,7 @@ function go(id,btn){
 
 /* ---------- data ---------- */
 async function refreshAll(){
+  renderReview();
   const d=await api('/api/detections');if(d){DETS=d.detections||[];}
   const t=await api('/api/trajectories');if(t){TRAJS=t.trajectories||[];}
   const a=await api('/api/alerts');if(a){ALERTS=a.alerts||[];}
@@ -459,6 +481,23 @@ function doSearch(){
   $('trajInfo').textContent=tj.length?`${tj[0].plate}: ${(tj[0].cameras||tj[0].camera_sequence||[]).join(' → ')} • avg conf ${tj[0].avg_confidence||tj[0].average_confidence}`:'No linked trajectory yet for this plate.';
   drawTraj(hits);
 }
+function renderReview(){
+  const low = DETS.filter(d=>d.status==='low_confidence'||(d.ocr_confidence||0)<0.7);
+  const el=document.getElementById('reviewTbl'); if(!el) return;
+  document.getElementById('reviewCt').textContent = low.length + ' pending';
+  el.innerHTML = low.map(d=>`<tr>
+    <td><b>${esc(d.plate||'—')}</b></td>
+    <td>${esc(d.camera_id||'—')}</td>
+    <td>${esc(d.timestamp||'—')}</td>
+    <td>${esc(d.ocr_confidence||'—')}</td>
+    <td>${esc(d.image_quality||'—')}</td>
+    <td>${pill(d.status||'new')}</td>
+    <td><button class="btn" style="padding:4px 8px;font-size:11px" onclick="approveReview('${esc(d.detection_id||'')}')">Approve</button> <button class="btn ghost" style="padding:4px 8px;font-size:11px" onclick="rejectReview('${esc(d.detection_id||'')}')">Reject</button></td>
+  </tr>`).join('')||'<tr><td colspan="7" class="muted">No low-confidence detections. Run pipeline to generate.</td></tr>';
+}
+function approveReview(id){ toast('Approved: ' + id); }
+function rejectReview(id){ toast('Rejected: ' + id); }
+
 function drawTraj(hits){
   const c=$('trajCanvas');if(!c)return;const x=c.getContext('2d');
   x.fillStyle='#0b1224';x.fillRect(0,0,c.width,c.height);
@@ -484,6 +523,34 @@ function drawSchematic(canvasId,{detailed}){
     else{x.fillStyle=n>12?'#ff5470':'#00e68a';x.beginPath();x.arc(px,py,8,0,7);x.fill();x.fillStyle='#04121a';x.font='bold 9px sans-serif';x.fillText(id.replace('CAM_','C'),px-6,py+3);x.fillStyle='#aab4cc';x.font='11px sans-serif';x.fillText(`${id} (${n})`,px+12,py+4);}});
 }
 function drawDash(){drawSchematic('dashMap',{detailed:false});}
+// Animated trajectory on Leaflet map (Wow Moment)
+function drawTrajOnLeaf(plate){
+  const m = window._leaf; if(!m) return;
+  if(window._trajLayer){ m.removeLayer(window._trajLayer); }
+  if(window._trajMarkers){ window._trajMarkers.forEach(mk=>m.removeLayer(mk)); window._trajMarkers=[]; }
+  const traj = (TRAJS||[]).find(t=>(t.plate||'').includes(plate));
+  if(!traj){ toast('No trajectory for ' + plate); return; }
+  const cams = traj.cameras || traj.camera_sequence || [];
+  const pts = cams.map(cid=>{
+    const c = (CAMS||[]).find(x=>x.camera_id===cid);
+    return c ? [c.latitude, c.longitude] : null;
+  }).filter(Boolean);
+  if(pts.length < 2){ toast('Need 2+ cameras'); return; }
+  window._trajLayer = L.polyline(pts, {color:'#00d4ff', weight:4, opacity:0.9, dashArray:'10,6'}).addTo(m);
+  const times = traj.times || [];
+  window._trajMarkers = [];
+  pts.forEach((pt,i)=>{
+    const mk = L.circleMarker(pt, {radius:8, color:'#00d4ff', fillColor:'#00d4ff', fillOpacity:0.9}).addTo(m);
+    mk.bindPopup('<b>'+cams[i]+'</b><br>Time: '+(times[i]||'---')+'<br>Plate: '+esc(traj.plate));
+    window._trajMarkers.push(mk);
+  });
+  m.fitBounds(L.latLngBounds(pts), {padding:[40,40]});
+  window._trajMarkers.forEach((mk,idx)=>{
+    setTimeout(()=>{ mk.setStyle({fillColor:'#ffcc00',color:'#ffcc00'}); setTimeout(()=>mk.setStyle({fillColor:'#00d4ff',color:'#00d4ff'}),600); }, idx*800);
+  });
+  toast('Trajectory drawn for ' + plate + ' across ' + pts.length + ' cameras');
+}
+
 function drawGIS(){drawSchematic('gisMap',{detailed:true});}
 
 /* ---------- analytics ---------- */

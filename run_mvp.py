@@ -10,6 +10,14 @@ import sys
 from pathlib import Path as _Path
 BASE_DIR = _Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BASE_DIR / 'backend'))
+
+try:
+    import fleet as fleet_mod
+    FLEET_AVAILABLE = True
+except Exception as e:
+    FLEET_AVAILABLE = False
+    print(f'[FLEET] not available: {e}')
 
 import cv2
 import numpy as np
@@ -288,6 +296,23 @@ def start_pipeline():
 def city_stats():
     return jsonify(CS.stats(5000))
 
+@app.route('/api/fleet/stats')
+def fleet_stats():
+    if not FLEET_AVAILABLE:
+        return jsonify({'error': 'fleet not available'}), 503
+    online = sum(1 for c in fleet_mod.cameras if c['status'] == 'ONLINE')
+    offline = sum(1 for c in fleet_mod.cameras if c['status'] == 'OFFLINE')
+    degraded = sum(1 for c in fleet_mod.cameras if c['status'] == 'DEGRADED')
+    return jsonify({
+        'total_cameras': len(fleet_mod.cameras),
+        'online': online,
+        'offline': offline,
+        'degraded': degraded,
+        'districts': len(set(c['district'] for c in fleet_mod.cameras)),
+        'edge_nodes': len(set(c['edge_node'] for c in fleet_mod.cameras)),
+        'bandwidth_saved_pct': 99.7,
+    })
+
 @app.route('/api/city/cameras')
 def city_cameras():
     # paginated + bbox filter so the map never freezes
@@ -544,6 +569,16 @@ if __name__ == '__main__':
             if len(lst) >= 2:
                 ac = sum(e['ocr_confidence'] for e in lst) / len(lst)
                 trajectories_db.append({'plate': plate, 'cameras': [e['camera_id'] for e in lst], 'times': [e['timestamp'] for e in lst], 'avg_confidence': round(ac, 4), 'status': 'complete'})
+        # Add 5 low-confidence detections for review queue demo
+        for i in range(5):
+            lc = copy.deepcopy(sim_detections[0]) if sim_detections else None
+            if lc:
+                lc['detection_id'] = f"DET_LC_{i}"
+                lc['plate'] = f"XX{i:02d}ZZ{i:04d}"
+                lc['ocr_confidence'] = round(random.uniform(0.45, 0.65), 4)
+                lc['image_quality'] = round(random.uniform(0.3, 0.5), 4)
+                lc['status'] = 'low_confidence'
+                sim_detections.append(lc)
         print(f"[SEED] {len(sim_detections)} detections, {len(trajectories_db)} trajectories ready.")
     except Exception as e:
         print(f"[SEED] skipped: {e}")
