@@ -2,56 +2,64 @@
 
 **SIH 2026 — Problem Statement 26127 | Bharat Electronics Limited (BEL)**
 
-NetraPath transforms a city's existing CCTV/ANPR camera network from a collection of isolated detection points into a unified, privacy-aware urban mobility intelligence system. It links every plate detection across cameras into a continuous vehicle timeline, reconstructs the actual route driven on a GIS map, and converts the aggregated detection stream into macro traffic analytics — congestion heatmaps, origin-destination patterns, and speed estimates — all visible on a single web dashboard in real time.
+> **Status**: MVP Prototype (Flask + Vanilla JS) | **Target**: SIH 2026 Final Round
+
+NetraPath transforms a city's existing CCTV/ANPR camera network from isolated detection points into a unified, privacy-aware urban mobility intelligence system. It links every plate detection across cameras into a continuous vehicle timeline, reconstructs the actual route on a GIS map, and converts aggregated detections into macro traffic analytics — all on a single web dashboard in real time.
 
 ---
 
-## What It Does
+## What Is Actually Built (MVP)
 
-- **Multi-camera ANPR** — YOLOv8 vehicle + plate detection, PaddleOCR/RapidOCR character recognition, temporal OCR fusion across frames for ≥ 90 % accuracy.
-- **Trajectory reconstruction** — Links sightings of the same plate across cameras into a time-ordered route with GIS route line, evidence at each node, and route confidence score.
-- **Real-time alerts** — Blacklist/watchlist match, geofence violation, wrong-way, speed violation, cloned plate, route anomaly, camera down — delivered via WebSocket in < 5 s.
-- **Traffic analytics** — City-wide heatmap, origin-destination matrix, camera-to-camera flow, congestion detection, peak-hour patterns.
-- **Privacy-by-design** — HMAC-SHA256 plate hashing for analytics, AES-256 encrypted plate storage, RBAC (4 roles), immutable audit logs. DPDP Act 2023 compliant.
-- **Human-in-the-loop** — Low-confidence OCR flagged for review; all alerts require operator acknowledgement; no automatic enforcement.
+The current repository is a **working Flask MVP** that runs with `python run_mvp.py` on port 5000. No Docker, no PostgreSQL, no Kafka, no React — just a single-file Flask app with an embedded vanilla JS dashboard. This is intentional for a 36-hour hackathon.
 
----
+### Implemented Features ✅
+- **ANPR Pipeline**: YOLOv8 vehicle + plate detection → PaddleOCR/RapidOCR → Indian plate regex validation
+- **Temporal OCR Fusion**: Weighted voting across frames for higher accuracy
+- **Multi-Camera Trajectory**: Links plate sightings across cameras with haversine distance + speed plausibility check
+- **Watchlist & Blacklist Alerts**: Real-time alert when watchlisted plate is detected
+- **Traffic Heatmap**: Density overlay on Leaflet map
+- **Camera Health Monitoring**: Green/amber/red status grid
+- **City-Scale Simulation**: 5,000 virtual cameras with stats and heat data
+- **Fleet Simulator**: 5,000-camera event generator
+- **MJPEG Live Streams**: Traffic feed + webcam (including phone-as-webcam apps)
+- **Async Video Upload**: Upload .mp4 → process → view detections with progress tracking
+- **OCR Lab**: Upload image → get plate text + confidence
+- **Analytics**: Vehicle counts, speed estimation, flow analysis, OD matrix
+- **28 REST API Endpoints**: All documented below
 
-## Technology Stack
-
-| Layer | Technology |
+### Tech Stack (Actual MVP)
+| Component | Technology |
 |---|---|
-| AI/CV | Python, OpenCV, YOLOv8-nano, PaddleOCR / RapidOCR, ByteTrack |
-| Backend | Flask (MVP) / FastAPI (production), PostgreSQL + PostGIS, Redis |
-| Event Streaming | Apache Kafka (or MQTT for small scale) |
-| Frontend | React 18 + TypeScript, Leaflet, Recharts (production) / Vanilla JS + Leaflet (MVP) |
-| Auth | JWT + RBAC (ADMIN / INVESTIGATOR / TRAFFIC_OFFICER / VIEWER) |
-| Deployment | Docker Compose |
+| Backend | Python + Flask |
+| AI/CV | YOLOv8 (Ultralytics) + PaddleOCR/RapidOCR + OpenCV |
+| Frontend | Vanilla JS + Leaflet.js (single-page, 700 lines) |
+| Data Store | In-memory Python dicts |
+| Maps | Leaflet 1.9 + OpenStreetMap/CARTO tiles |
+| Video | OpenCV + MJPEG streaming |
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone the repository
+# 1. Clone
 git clone https://github.com/amanjangrawork-lab/Team-LCQ
 cd Team-LCQ
 
 # 2. Install dependencies
 uv sync
 
-# 3. Run the MVP dashboard
+# 3. Run
 python run_mvp.py
 ```
 
-Open http://localhost:5000 — the dashboard is pre-seeded with demo data on first load.
+Open http://localhost:5000 — dashboard is pre-seeded with demo data on first load.
 
 ### Prerequisites
-
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- (Optional) GPU with CUDA for YOLOv8 inference
-- (Optional) Webcam or IP camera for live detection
+- (Optional) GPU with CUDA for YOLOv8
+- (Optional) Webcam for live detection
 
 ---
 
@@ -59,20 +67,24 @@ Open http://localhost:5000 — the dashboard is pre-seeded with demo data on fir
 
 ```
 Team-LCQ/
-├── run_mvp.py                  # Main Flask app — single source of truth
+├── run_mvp.py                  # Main Flask app — single source of truth (551 lines)
 ├── backend/
 │   ├── app.py                  # Legacy shim (re-exports app from run_mvp.py)
 │   ├── city_scale.py           # 5,000 virtual camera generator + city stats/heat
 │   ├── fleet.py                # 5,000-camera fleet simulator + event generator
 │   ├── real_vision.py          # YOLOv8 + RapidOCR/PaddleOCR for webcam/video/streaming
 │   ├── models/
-│   │   ├── anpr_engine.py      # ANPR pipeline class (YOLO + plate crop + OCR + validation)
+│   │   ├── anpr_engine.py      # ANPR pipeline: YOLO + plate crop + OCR + validation + temporal fusion
 │   │   └── trajectory_engine.py # Multi-camera trajectory linking + analytics
 │   └── templates/
-│       └── index.html          # Dashboard SPA (Leaflet maps, MJPEG streams)
+│       └── index.html          # Dashboard SPA (Leaflet maps, MJPEG streams, 700 lines)
 ├── scripts/
 │   ├── generate_ppt_screenshots.py  # 8 PPT-ready PNG screenshots
 │   └── generate_traffic_video.py    # Synthetic traffic MP4 generator
+├── docs/                       # SIH documentation (v2.0 — Sprint Edition)
+│   ├── 01_Implementation_Plan.docx
+│   ├── 02_Research_and_Scenarios.docx
+│   └── 03_Project_Overview.docx
 ├── src/netrapath/              # Placeholder package
 ├── project_spec.json           # Project specification
 ├── pyproject.toml              # uv project config
@@ -81,77 +93,91 @@ Team-LCQ/
 
 ---
 
-## Operating Modes
+## API Endpoints (28 routes)
 
-| Mode | Description |
-|---|---|
-| **LIVE** | RTSP camera streams — real-time detection and alerts |
-| **REPLAY** | Pre-recorded .mp4 files — full pipeline on recorded footage |
-| **SIMULATION** | Generated synthetic events — large-scale testing without camera access |
-
----
-
-## Key Features
-
-### AI/CV Pipeline
-- Two-stage detection: YOLOv8-nano (vehicle) → YOLOv8 (plate) → CLAHE enhancement → perspective correction → sharpening → OCR
-- Plate Quality Score: `0.30×sharpness + 0.25×brightness_ok + 0.20×plate_area_ratio + 0.15×angle_ok + 0.10×detector_confidence`
-- Temporal OCR fusion: weighted voting across frames — `Score(plate) = Σ quality_i × confidence_i × I(plate_i == plate)`
-- Indian plate format regex validation with I/1, O/0 confusion correction
-- Low-confidence readings flagged for human review (never silently discarded)
-
-### Trajectory Engine
-- Groups detections by plate hash, sorts chronologically
-- Route plausibility check: flags links requiring physically impossible speed (> 150 km/h)
-- Dijkstra shortest-path on camera network graph (NetworkX)
-- Route confidence score per segment; low-confidence segments shown as dashed lines
-
-### Alert Engine (7 Types)
-| Alert | Trigger |
-|---|---|
-| BLACKLIST | Plate hash matches active watchlist entry (Redis cached) |
-| GEOFENCE | Detection location within configured PostGIS polygon |
-| WRONG_WAY | Vehicle direction conflicts with road segment allowed direction |
-| SPEED_VIOLATION | Calculated speed between camera pair exceeds threshold |
-| CLONED_PLATE | Same plate at two physically impossible locations simultaneously |
-| ROUTE_ANOMALY | Trajectory route confidence below threshold |
-| CAMERA_DOWN | No camera heartbeat for > 5 minutes |
-
-Risk Score: `0.40×B + 0.25×C + 0.20×R + 0.15×Q` → CRITICAL (≥0.75), HIGH (0.55–0.74), MEDIUM (0.35–0.54), LOW (<0.35)
-
-### Dashboard Pages
-1. Login (JWT + RBAC role-based routing)
-2. Home / Overview (stat tiles, mini map, quick links)
-3. Plate Search & Trajectory (text input + date range → route line on map → sighting list)
-4. Live Alerts (WebSocket real-time alert cards, acknowledge/resolve)
-5. Watchlist Management (add/deactivate, role-gated)
-6. Traffic Heatmap & Analytics (Leaflet heatmap, OD matrix, peak-hour charts)
-7. Camera Health (green/amber/red status grid, 24-h detection history)
-8. Advanced Search (area-based polygon, route-based camera pair, camera+time filter)
-9. Reports / Review Queue (low-confidence detections, impossible-travel flags, cloned-plate suspects)
-
----
-
-## Scalability Path
-
-| Stage | Scale | Infrastructure |
+| Method | Endpoint | Description |
 |---|---|---|
-| Prototype (Hackathon) | 3–5 cameras | Single GPU workstation, Docker Compose, local PostgreSQL |
-| Pilot | 50 cameras | Edge Jetson/T4 nodes, Kafka partitioning, PG read replicas, Redis cluster |
-| City-Scale | 1,000+ cameras | Kubernetes HPA, TimescaleDB hypertables, PostGIS spatial indexing, CDN frontend |
+| GET | `/` | Dashboard (index.html) |
+| GET | `/api/detections` | List all detections |
+| GET | `/api/trajectories` | List all trajectories |
+| GET | `/api/cameras` | List cameras with status |
+| GET/POST | `/api/watchlist` | View/add watchlist entries |
+| GET | `/api/alerts` | List alerts |
+| GET | `/api/analytics` | Traffic analytics |
+| GET | `/api/heatmap` | Heatmap data |
+| POST | `/api/start-pipeline` | Start detection pipeline |
+| GET | `/api/city/stats` | City-wide statistics |
+| GET | `/api/city/cameras` | City camera list |
+| GET | `/api/city/heat` | City heat data |
+| GET | `/traffic_feed` | MJPEG traffic video stream |
+| GET | `/api/traffic/dets` | Traffic detection results |
+| GET | `/api/traffic/status` | Traffic pipeline status |
+| POST | `/api/traffic/restart` | Restart traffic pipeline |
+| GET | `/video_feed` | MJPEG webcam stream |
+| GET | `/api/webcam/list` | List available webcams |
+| POST | `/api/webcam/start` | Start webcam capture |
+| POST | `/api/webcam/stop` | Stop webcam capture |
+| GET | `/api/webcam/dets` | Webcam detection results |
+| POST | `/api/upload-video` | Upload video for async processing |
+| GET | `/api/upload-video/status/<job_id>` | Upload processing status |
+| POST | `/api/ocr-demo` | OCR on uploaded image |
+| GET | `/api/dataset/overview` | Dataset overview |
+| GET | `/outputs/<path:fname>` | Serve output files |
+| GET | `/api/health` | Health check |
 
 ---
 
-## Evaluation Metrics (Prototype Targets)
+## SIH Sprint Plan (36-Hour Hackathon)
 
-| Metric | Target |
-|---|---|
-| Plate detection precision | ≥ 90 % |
-| Full plate recognition accuracy | ≥ 90 % (clear) / ≥ 70 % (adverse) |
-| Camera-to-camera linking accuracy | ≥ 85 % |
-| Alert generation latency | < 5 s end-to-end |
-| Duplicate event suppression | ≥ 80 % |
-| Trajectory display time | < 3 s for 30-day window |
+| Hours | Task Block | Deliverable |
+|---|---|---|
+| 0-2 | Setup | Flask running, dashboard loads |
+| 2-6 | YOLO detection | Vehicles + plates detected |
+| 6-10 | OCR + validation | Plate text extracted |
+| 10-14 | Trajectory engine | Cross-camera route on map |
+| 14-18 | Dashboard core | Map + search + alerts |
+| 18-22 | Heatmap + analytics | Density overlay + OD counts |
+| 22-26 | Watchlist + review + demo data | CRUD + seeded data |
+| 26-30 | Polish | Error handling, loading states |
+| 30-34 | Demo rehearsal | Full run-through x3 |
+| 34-36 | Buffer | Backup video, final commit |
+
+---
+
+## The "Wow Moment" (Killer Demo)
+
+> Type a plate number → watch the vehicle's entire journey draw itself as an animated line across 3-4 cameras on a Leaflet map, with timestamps and evidence thumbnails at each stop, then a blacklist alert fires in real-time.
+
+This demonstrates: ANPR ✓, Trajectory ✓, GIS ✓, Real-time Alerts ✓, Evidence ✓ — 5 problem-statement requirements in 30 seconds.
+
+---
+
+## Must-Have / Nice-to-Have / Don't-Build
+
+### Must-Have (Demo-Critical)
+1. Working ANPR on 2-3 video clips
+2. Multi-camera trajectory on a map (THE WOW)
+3. Blacklist alert firing live
+4. Heatmap updating during replay
+5. Camera health status
+6. Low-confidence review queue
+
+### Nice-to-Have (If Time Permits)
+- OD matrix chart
+- Cloned plate detection demo
+- RBAC login screen (role toggle)
+- Wrong-way detection
+
+### Don't-Build for SIH (Over-Engineering)
+- Kafka → use in-memory queue
+- PostgreSQL/PostGIS → use in-memory dicts
+- React → use vanilla JS
+- FastAPI → use Flask
+- Docker → `python run_mvp.py`
+- JWT/RBAC → role toggle button
+- WebSocket → REST polling
+- ByteTrack → single-frame detection
+- CLAHE → basic crop + OCR
 
 ---
 
@@ -159,18 +185,47 @@ Risk Score: `0.40×B + 0.25×C + 0.20×R + 0.15×Q` → CRITICAL (≥0.75), HIGH
 
 - DPDP Act 2023 + DPDP Rules 2025 aligned
 - HMAC-SHA256 plate hashing for all analytics
-- AES-256 encrypted plate storage, decrypted only for ADMIN/INVESTIGATOR roles
-- Immutable audit logs for every plate view, search, and alert action
-- No automatic challan/penalty — human verification required for all enforcement
+- AES-256 encrypted plate storage (production)
+- RBAC: VIEWER / TRAFFIC_OFFICER / INVESTIGATOR / ADMIN
+- Immutable audit logs (production)
+- No automatic challan — human verification required
 
 ---
 
-## Known Limitations
+## Production Roadmap (Post-SIH)
 
-- OCR accuracy drops in heavy rain, full darkness, and severely damaged plates (temporal fusion + human review mitigate)
+The `docs/` folder contains the full production architecture plan:
+- **FastAPI** backend with 15+ endpoints + WebSocket
+- **React 18 + TypeScript** 9-page dashboard
+- **PostgreSQL + PostGIS** for spatial queries
+- **Apache Kafka** for event streaming
+- **Redis** for watchlist cache
+- **Docker Compose** for one-command deployment
+- **RBAC with JWT** authentication
+- **ByteTrack** multi-object tracking
+- **CLAHE** image enhancement
+
+See `docs/01_Implementation_Plan.docx` for the full 24-day production plan.
+
+---
+
+## Known Limitations (Honest)
+
+- OCR accuracy drops in heavy rain, darkness, damaged plates (temporal fusion mitigates)
 - No real government camera feed tested — replay/simulation modes provide full demo
-- Camera clock mismatch can corrupt trajectories (NTP sync + plausibility check mitigate)
+- Camera clock mismatch can corrupt trajectories (plausibility check mitigates)
 - Prototype is not a certified enforcement tool — all decisions require human verification
+- In-memory data store (no persistence across restarts)
+
+---
+
+## Documentation
+
+| File | Description |
+|---|---|
+| `docs/01_Implementation_Plan.docx` | Full implementation plan + 36-hour SIH sprint |
+| `docs/02_Research_and_Scenarios.docx` | Research review + 10 selected scenarios + SIH judging alignment |
+| `docs/03_Project_Overview.docx` | Project overview + demo script + team roles + competitive differentiation |
 
 ---
 

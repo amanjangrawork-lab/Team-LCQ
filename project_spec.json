@@ -1,116 +1,135 @@
 {
   "project_name": "NetraPath",
   "full_name": "City-Wide AI Engine for Multi-Camera ANPR, Trajectory Tracking and Urban Traffic Analytics",
-  "version": "1.0.0",
-  "status": "MVP Prototype",
+  "version": "1.0.0-mvp",
+  "status": "MVP Prototype (Flask + Vanilla JS)",
+  "target": "SIH 2026 Final Round",
   "problem_statement": "SIH 2026 — Problem Statement 26127",
   "organisation": "Bharat Electronics Limited (BEL)",
   "prepared": "November 2026",
-  "description": "NetraPath transforms a city's existing CCTV/ANPR camera network from a collection of isolated detection points into a unified, privacy-aware urban mobility intelligence system. It links every plate detection across cameras into a continuous vehicle timeline, reconstructs the actual route driven on a GIS map, and converts the aggregated detection stream into macro traffic analytics — congestion heatmaps, origin-destination patterns, and speed estimates — all visible on a single web dashboard in real time.",
+  "description": "NetraPath transforms a city's existing CCTV/ANPR camera network from isolated detection points into a unified, privacy-aware urban mobility intelligence system. Current repo is a working Flask MVP with in-memory data, vanilla JS dashboard, and 28 REST endpoints. Production architecture (FastAPI, React, PostgreSQL, Kafka) is documented in docs/ folder.",
   "core_requirements": [
     "High-accuracy ANPR and OCR engine (target >= 90% plate recognition on diverse test set)",
     "Single-plate trajectory reconstruction across multiple cameras with GIS route visualisation",
     "Macro-level traffic flow analytics, congestion heatmaps, and real-time blacklist alerting"
   ],
-  "architecture": {
-    "layers": [
-      {"id": "L1", "name": "Edge / Ingestion", "technology": "Python, OpenCV, YOLOv8, PaddleOCR / RapidOCR", "responsibility": "Read video, detect vehicles, run OCR, emit events"},
-      {"id": "L2", "name": "Event Streaming", "technology": "Apache Kafka (or MQTT for small scale)", "responsibility": "Buffer and route detection events to backend services"},
-      {"id": "L3", "name": "Backend Services", "technology": "FastAPI, PostgreSQL + PostGIS, Redis", "responsibility": "Store detections, reconstruct trajectories, run alerts"},
-      {"id": "L4", "name": "Frontend / Dashboard", "technology": "React 18, TypeScript, Leaflet, Recharts", "responsibility": "GIS map, search, heatmaps, alerts, analytics"}
-    ],
-    "pipeline_flow": "Camera/Video -> Frame Extraction -> Vehicle Detection (YOLO) -> Plate Detection (YOLO) -> Image Enhancement (CLAHE, perspective) -> OCR + Confidence Score -> Temporal Fusion -> Plate Validation -> Kafka Event -> Backend API -> PostgreSQL/PostGIS -> Trajectory Engine -> GIS Dashboard -> Alert Engine -> Operator"
+  "actual_tech_stack_mvp": {
+    "backend": "Python + Flask",
+    "ai_cv": "YOLOv8 (Ultralytics) + PaddleOCR/RapidOCR + OpenCV",
+    "frontend": "Vanilla JS + Leaflet.js (single-page, 700 lines)",
+    "data_store": "In-memory Python dicts",
+    "maps": "Leaflet 1.9 + OpenStreetMap/CARTO",
+    "video": "OpenCV + MJPEG streaming",
+    "entry_point": "python run_mvp.py",
+    "port": 5000
   },
-  "technology_stack": {
-    "video_ingestion": {"name": "Python + OpenCV + FFmpeg", "version": "OpenCV 4.9+"},
-    "vehicle_plate_detection": {"name": "YOLOv8-nano / small", "version": "Ultralytics 8.x"},
-    "ocr_engine": {"name": "PaddleOCR / RapidOCR", "version": "2.7+"},
-    "image_enhancement": {"name": "OpenCV (CLAHE, warpPerspective)", "version": "Built-in"},
-    "vehicle_tracker": {"name": "ByteTrack (via Ultralytics)", "version": "Built-in"},
-    "event_streaming": {"name": "Apache Kafka", "version": "3.7+"},
-    "backend_api": {"name": "FastAPI (Python)", "version": "0.111+"},
-    "primary_database": {"name": "PostgreSQL 16 + PostGIS 3.4", "version": "PostGIS 3.4"},
-    "time_series_cache": {"name": "Redis 7", "version": "7"},
-    "frontend_framework": {"name": "React 18 + TypeScript", "version": "18"},
-    "gis_map": {"name": "Leaflet 1.9 + OpenStreetMap", "version": "1.9"},
-    "charts": {"name": "Recharts or Apache ECharts", "version": "Latest"},
-    "auth": {"name": "FastAPI OAuth2 + JWT", "version": "Latest"},
-    "containerisation": {"name": "Docker + Docker Compose", "version": "Latest"},
-    "object_storage": {"name": "MinIO (local) / S3 (cloud)", "version": "Latest"}
+  "production_tech_stack_target": {
+    "backend": "FastAPI 0.111+",
+    "frontend": "React 18 + TypeScript",
+    "database": "PostgreSQL 16 + PostGIS 3.4",
+    "cache": "Redis 7",
+    "event_streaming": "Apache Kafka 3.7+",
+    "containerisation": "Docker Compose"
   },
-  "operating_modes": ["LIVE (RTSP streams)", "REPLAY (pre-recorded .mp4 files)", "SIMULATION (generated synthetic events)"],
-  "dashboard_pages": [
-    {"id": 1, "name": "Login", "description": "JWT login form; store token + role in Zustand; redirect by role."},
-    {"id": 2, "name": "Home / Overview", "description": "Stat tiles: vehicles today, active alerts, cameras online. Mini map. Quick links."},
-    {"id": 3, "name": "Plate Search (core)", "description": "Text input + date range -> GET /trajectory -> draw LineString on Leaflet map -> sighting list with thumbnails."},
-    {"id": 4, "name": "Live Alerts", "description": "WebSocket connection -> real-time alert cards -> click to open detail + map pin. Acknowledge / resolve buttons."},
-    {"id": 5, "name": "Watchlist Mgmt", "description": "Table of active watchlist entries. Add/deactivate form (role-gated)."},
-    {"id": 6, "name": "Traffic Heatmap", "description": "Leaflet + heatmap.js layer. Time-window slider. Auto-refresh every 60 s. Camera-to-camera flow lines."},
-    {"id": 7, "name": "Camera Health", "description": "Grid of camera cards with green/amber/red status. Click -> last 24-h detection count chart."},
-    {"id": 8, "name": "Advanced Search", "description": "Area-based (draw polygon on map), route-based (pick two cameras), camera+time filter."},
-    {"id": 9, "name": "Reports / Review Queue", "description": "Low-confidence detections, impossible-travel flags, cloned-plate suspects. Approve / reject with audit log."}
+  "implemented_features": [
+    "YOLOv8 vehicle + plate detection",
+    "PaddleOCR / RapidOCR",
+    "Indian plate regex validation (I/1, O/0 correction)",
+    "Temporal OCR fusion (weighted voting)",
+    "Multi-camera trajectory linking (haversine + speed check)",
+    "Watchlist + blacklist alerts",
+    "Traffic heatmap",
+    "Camera health monitoring",
+    "City-scale 5,000 camera simulation",
+    "Fleet simulator (5,000 cameras)",
+    "MJPEG live streams (traffic + webcam)",
+    "Async video upload with progress tracking",
+    "OCR lab (image upload → plate text)",
+    "Analytics (counts, speed, flow, OD matrix)",
+    "28 REST API endpoints"
+  ],
+  "not_implemented_mvp": [
+    "FastAPI (using Flask)",
+    "React frontend (using vanilla JS)",
+    "PostgreSQL/PostGIS (using in-memory)",
+    "Kafka (using in-memory queue)",
+    "Redis (using Python dict)",
+    "JWT/RBAC (using role toggle)",
+    "WebSocket (using REST polling)",
+    "ByteTrack (single-frame detection)",
+    "CLAHE enhancement (basic crop)",
+    "Docker (direct run)"
+  ],
+  "api_endpoints_count": 28,
+  "operating_modes": ["LIVE (RTSP/webcam streams)", "REPLAY (pre-recorded .mp4 files)", "SIMULATION (generated synthetic events)"],
+  "dashboard_pages_mvp": [
+    "Login / Role Toggle",
+    "Home / Overview (stat tiles + mini map)",
+    "Plate Search & Trajectory (route on map + sighting list)",
+    "Live Alerts + Watchlist",
+    "Traffic Heatmap + Camera Health"
   ],
   "alert_types": [
-    {"type": "BLACKLIST", "trigger": "New detection plate_hash found in watchlist table (Redis cache for speed)."},
-    {"type": "GEOFENCE", "trigger": "Detection location ST_Within geofence polygon stored in DB."},
-    {"type": "WRONG_WAY", "trigger": "Vehicle direction from AI engine conflicts with road_segment allowed direction."},
-    {"type": "SPEED", "trigger": "Same plate at two cameras; calculated speed > configured threshold."},
-    {"type": "CLONED_PLATE", "trigger": "Same plate_hash in two locations within physically impossible time window."},
-    {"type": "ROUTE_ANOMALY", "trigger": "Trajectory route_confidence below threshold; flagged for human review."},
-    {"type": "CAMERA_DOWN", "trigger": "No heartbeat from camera_health table for > 5 minutes."}
+    {"type": "BLACKLIST", "trigger": "Plate hash matches active watchlist entry", "priority": "Must-have"},
+    {"type": "CAMERA_DOWN", "trigger": "No camera heartbeat for > 5 minutes", "priority": "Must-have"},
+    {"type": "GEOFENCE", "trigger": "Detection within configured polygon", "priority": "Nice-to-have"},
+    {"type": "WRONG_WAY", "trigger": "Vehicle direction conflicts with road segment", "priority": "Nice-to-have"},
+    {"type": "SPEED_VIOLATION", "trigger": "Calculated speed exceeds threshold", "priority": "Nice-to-have"},
+    {"type": "CLONED_PLATE", "trigger": "Same plate at two impossible locations", "priority": "Nice-to-have"},
+    {"type": "ROUTE_ANOMALY", "trigger": "Trajectory route_confidence below threshold", "priority": "Nice-to-have"}
   ],
-  "risk_score_formula": "0.40*B + 0.25*C + 0.20*R + 0.15*Q where B=blacklist match confidence, C=OCR confidence, R=route anomaly score, Q=evidence quality",
-  "risk_score_levels": {
-    "CRITICAL": ">= 0.75",
-    "HIGH": "0.55-0.74",
-    "MEDIUM": "0.35-0.54",
-    "LOW": "< 0.35"
+  "risk_score_formula": "0.40*B + 0.25*C + 0.20*R + 0.15*Q",
+  "risk_score_levels": {"CRITICAL": ">= 0.75", "HIGH": "0.55-0.74", "MEDIUM": "0.35-0.54", "LOW": "< 0.35"},
+  "rbac_roles": {"VIEWER": "Heatmaps + camera counts", "TRAFFIC_OFFICER": "Alerts + watchlist", "INVESTIGATOR": "Full trajectory search", "ADMIN": "All operations"},
+  "sih_sprint_plan": {
+    "0-2h": "Setup — Flask running, dashboard loads",
+    "2-6h": "YOLO detection — vehicles + plates detected",
+    "6-10h": "OCR + validation — plate text extracted",
+    "10-14h": "Trajectory engine — cross-camera route on map",
+    "14-18h": "Dashboard core — map + search + alerts",
+    "18-22h": "Heatmap + analytics — density overlay + OD counts",
+    "22-26h": "Watchlist + review + demo data",
+    "26-30h": "Polish — error handling, loading states",
+    "30-34h": "Demo rehearsal — full run-through x3",
+    "34-36h": "Buffer — backup video, final commit"
   },
-  "rbac_roles": {
-    "VIEWER": "Heatmaps and camera counts only.",
-    "TRAFFIC_OFFICER": "Adds watchlist, sees alert feed.",
-    "INVESTIGATOR": "Full trajectory search.",
-    "ADMIN": "Manages users, full access."
-  },
-  "selected_scenarios": [
-    "Multi-Camera Trajectory", "Historical Vehicle Investigation", "Stolen/Wanted Vehicle Trail",
-    "Partial Plate Recovery", "Cross-Camera Re-Identification", "Blacklist/Watchlist Alert",
-    "Restricted Zone Entry", "Wrong-Way Vehicle Detection", "Average-Speed Violation",
-    "Cloned Plate Detection", "City-Wide Traffic Heatmap", "Origin-Destination Matrix",
-    "Camera-to-Camera Flow Analysis", "Congestion Detection and Alerting", "Peak-Hour Pattern Analysis",
-    "OCR Confidence Review Queue", "Impossible Travel Flag", "Camera Health Monitoring",
-    "Route Anomaly / Suspicious Route", "Emergency Route Corridor Status"
+  "must_have_features": [
+    "Working ANPR on 2-3 video clips",
+    "Multi-camera trajectory on map (WOW moment)",
+    "Blacklist alert firing live",
+    "Heatmap updating during replay",
+    "Camera health status",
+    "Low-confidence review queue"
   ],
-  "excluded_scenarios": [
-    "Automatic e-challan / fine issuance", "Facial recognition integration",
-    "Full raw video streaming to central server", "Real-time traffic signal control",
-    "Predictive crime mapping", "Automated suspect profiling"
+  "nice_to_have_features": [
+    "OD matrix chart",
+    "Cloned plate detection demo",
+    "RBAC login screen",
+    "Wrong-way detection"
   ],
-  "evaluation_metrics": {
+  "wow_moment": "Type a plate number → watch the vehicle's entire journey draw itself as an animated line across 3-4 cameras on a Leaflet map, with timestamps and evidence thumbnails at each stop, then a blacklist alert fires in real-time.",
+  "evaluation_metrics_targets": {
     "plate_detection_precision": ">= 90%",
-    "full_plate_recognition_accuracy_clear": ">= 90%",
-    "full_plate_recognition_accuracy_adverse": ">= 70%",
-    "camera_to_camera_linking_accuracy": ">= 85%",
-    "alert_generation_latency": "< 5s end-to-end",
-    "duplicate_event_suppression_rate": ">= 80%",
-    "trajectory_display_time": "< 3s for 30-day window",
-    "false_blacklist_alerts_on_clean_test": "0"
+    "plate_recognition_clear": ">= 90%",
+    "plate_recognition_adverse": ">= 70%",
+    "camera_to_camera_linking": ">= 85%",
+    "alert_latency": "< 5s end-to-end",
+    "duplicate_suppression": ">= 80%",
+    "trajectory_display_time": "< 3s"
   },
   "privacy_compliance": {
     "framework": "DPDP Act 2023 + DPDP Rules 2025",
     "plate_hashing": "HMAC-SHA256",
-    "plate_storage": "AES-256 encrypted",
-    "audit_logging": "Immutable audit_logs table for every plate view, search, and alert action",
+    "plate_storage": "AES-256 encrypted (production)",
     "rbac": "4 roles: VIEWER, TRAFFIC_OFFICER, INVESTIGATOR, ADMIN",
-    "jwt_expiry": "8 hours with rotating refresh tokens"
+    "audit_logging": "Immutable audit_logs (production)"
   },
-  "scalability": {
-    "prototype": "Single GPU workstation or laptop with CUDA. 3-5 camera streams. Docker Compose. Local PostgreSQL.",
-    "pilot_50_cameras": "Edge GPU nodes (NVIDIA Jetson/T4). Multi-partition Kafka. PG read replicas + Redis cluster. Nginx load balancer. MinIO cluster.",
-    "city_scale_1000_plus": "Kubernetes HPA. Kafka partitioned by camera region. TimescaleDB hypertables. PostGIS spatial indexing. CDN-served frontend. Multi-zone DB with 7-day edge buffer."
+  "documentation": {
+    "docs_folder": "docs/",
+    "implementation_plan": "docs/01_Implementation_Plan.docx",
+    "research_scenarios": "docs/02_Research_and_Scenarios.docx",
+    "project_overview": "docs/03_Project_Overview.docx"
   },
-  "mvp_entry_point": "python run_mvp.py",
-  "mvp_port": 5000,
   "python_version": "3.11",
   "package_manager": "uv"
 }
